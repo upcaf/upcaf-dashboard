@@ -1,0 +1,22 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-brand-primary: #102a43;
+  --color-brand-accent: #2e6ff2;
+  --color-brand-bg: #f3f4f6;
+  --color-brand-text: #0f172a;
+  --font-sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--color-brand-bg);
+  color: var(--color-brand-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100svh;
+}
