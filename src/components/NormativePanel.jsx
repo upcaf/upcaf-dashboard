@@ -51,9 +51,8 @@ export default function NormativePanel() {
   const letti = atti.filter(a => a.letto)
 
   return (
-    <Card title={`Novità normative ${nuovi.length > 0 ? `(${nuovi.length} nuove)` : ''}`}>
+    <Card title={`Novita normative ${nuovi.length > 0 ? `(${nuovi.length} nuove)` : ''}`}>
 
-      {/* Pulsante refresh */}
       <div className="mb-4 flex justify-end">
         <button
           onClick={fetchNormative}
@@ -78,7 +77,7 @@ export default function NormativePanel() {
           </div>
           <p className="text-sm font-medium text-slate-600">Nessun aggiornamento ancora</p>
           <p className="mt-1 max-w-sm text-xs text-slate-400">
-            Il polling mattutino rileverà le novità automaticamente.
+            Il polling mattutino rilевера le novita automaticamente.
           </p>
         </div>
       )}
@@ -86,7 +85,6 @@ export default function NormativePanel() {
       {!loading && !error && atti.length > 0 && (
         <div className="space-y-6">
 
-          {/* NUOVE */}
           {nuovi.length > 0 && (
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -100,11 +98,10 @@ export default function NormativePanel() {
             </div>
           )}
 
-          {/* LETTE */}
           {letti.length > 0 && (
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-300">
-                Già lette
+                Gia lette
               </p>
               <ul className="space-y-2">
                 {letti.map(a => (
@@ -122,7 +119,7 @@ export default function NormativePanel() {
 
 function AttoRow({ atto, onLetto, letto = false }) {
   const scheda = (() => {
-    try { return JSON.parse(atto.scheda_sintetica) } catch { return null }
+    try { return JSON.parse(atto.scheda_sintetica) } catch (e) { return null }
   })()
 
   return (
@@ -130,7 +127,6 @@ function AttoRow({ atto, onLetto, letto = false }) {
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
 
-          {/* Badge fonte + servizi */}
           <div className="mb-1.5 flex flex-wrap gap-1.5">
             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${FONTE_COLOR[atto.fonte] || 'bg-slate-100 text-slate-600'}`}>
               {FONTE_LABEL[atto.fonte] || atto.fonte}
@@ -142,19 +138,16 @@ function AttoRow({ atto, onLetto, letto = false }) {
             ))}
           </div>
 
-          {/* Titolo */}
           <p className={`text-sm font-medium leading-snug ${letto ? 'text-slate-400' : 'text-slate-800'}`}>
             {atto.titolo}
           </p>
 
-          {/* Sintesi AI */}
-          {scheda?.sintesi && (
+          {scheda && scheda.sintesi && (
             <p className="mt-1 text-xs text-slate-500 leading-relaxed">
               {scheda.sintesi}
             </p>
           )}
 
-          {/* Data + link */}
           <div className="mt-2 flex items-center gap-3">
             <span className="text-xs text-slate-400">{atto.data_pubblicazione}</span>
             {atto.fonte_url && (
@@ -164,14 +157,13 @@ function AttoRow({ atto, onLetto, letto = false }) {
                 rel="noopener noreferrer"
                 className="text-xs text-indigo-500 hover:underline"
               >
-                Leggi originale →
+                Leggi originale
               </a>
             )}
           </div>
 
         </div>
 
-        {/* Pulsante segna letto */}
         {!letto && (
           <button
             onClick={() => onLetto(atto.id)}
@@ -180,6 +172,7 @@ function AttoRow({ atto, onLetto, letto = false }) {
             Segna letto
           </button>
         )}
+
       </div>
     </li>
   )
