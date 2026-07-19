@@ -1,0 +1,310 @@
+---
+description: Design system UP CAF AI Dashboard. Applica queste regole ogni volta che modifichi o crei componenti della dashboard upcaf-dashboard.
+globs: ["src/**/*.jsx", "src/**/*.tsx", "src/**/*.css", "src/**/*.html"]
+alwaysApply: true
+---
+
+# UP CAF AI Dashboard — Design System
+
+## Identità visiva
+
+Dashboard operativa per UP CAF (CAF + Patronato), uso interno, operatore singolo su desktop.
+Stile: sidebar scura con logo, area principale su canvas caldo, bordi invece di shadow, pill buttons.
+Ispirazione: Dub (border-first), Apple España (pill 980px), Cursor.sh (parchment canvas), Dovetail (JetBrains Mono labels).
+
+---
+
+## Palette colori
+
+### Sidebar (sempre scura)
+```
+--sb-bg:            #1a1917   /* background sidebar */
+--sb-border:        rgba(255,255,255,0.06)
+--sb-item-active:   rgba(255,255,255,0.08)
+--sb-text-active:   #f7f7f4
+--sb-text-muted:    rgba(255,255,255,0.45)
+--sb-label-muted:   rgba(255,255,255,0.25)
+--sb-live:          #00A63D
+```
+
+### Dashboard (canvas caldo)
+```
+--canvas:           #f7f7f4   /* background pagina */
+--surface:          #ffffff   /* card, topbar */
+--surface-alt:      #f2f1ed   /* righe alternate, input bg */
+--border:           #e5e5e5   /* bordi card e righe */
+--border-soft:      #cdcdc9   /* bordi input, ghost button */
+--text-primary:     #26251e   /* testo principale */
+--text-muted:       #7a7974   /* testo secondario, label */
+```
+
+### Accenti funzionali (usare con parsimonia)
+```
+--accent-blue:      #2E6FF2   /* btn primario, badge sidebar normative */
+--accent-amber:     #c08532   /* badge sidebar handoff, stat warning */
+--accent-green:     #34785c   /* stat positivi, badge successo */
+--accent-red:       #b52040   /* badge urgente */
+```
+
+### Badge pill (tinte morbide)
+```
+/* In attesa */   background: rgba(192,133,50,0.1);  color: #a06820;
+/* Urgente */     background: rgba(207,45,86,0.1);   color: #b52040;
+/* Successo */    background: rgba(52,120,92,0.1);   color: #2a6b50;
+/* Info/dominio */background: rgba(46,111,242,0.1);  color: #1a55c4;
+```
+
+---
+
+## Tipografia
+
+```
+--font-sans:  'Inter', system-ui, sans-serif
+--font-mono:  'JetBrains Mono', monospace
+```
+
+### Scale
+| Ruolo | Font | Size | Weight | Note |
+|---|---|---|---|---|
+| Stat number | Inter | 24px | 400 | tracking -0.6px |
+| Card title | Inter | 11px | 500 | tracking -0.15px |
+| Body / nome | Inter | 11px | 400–500 | tracking -0.15px |
+| Button | Inter | 11px | 400 | tracking -0.15px |
+| Page title (topbar) | Inter | 13px | 500 | tracking -0.2px |
+| Eyebrow / label | JetBrains Mono | 9px | 400 | uppercase, spacing 0.7px |
+| Meta / sub | JetBrains Mono | 9px | 400 | spacing 0.3–0.5px |
+| Nav sidebar | Inter | 12px | 400 | tracking -0.1px |
+| Nav label sidebar | JetBrains Mono | 8px | 400 | uppercase, spacing 0.7px |
+
+**Regola:** JetBrains Mono SOLO per etichette categoria, metadati, date, label tecnici.
+Inter per tutto il resto.
+
+---
+
+## Layout
+
+### Struttura shell
+```
+.shell {
+  display: flex;
+  /* sidebar fissa a sinistra, main area flex: 1 */
+}
+```
+
+### Sidebar
+```
+width: 160px;
+min-width: 160px;
+background: #1a1917;
+display: flex;
+flex-direction: column;
+```
+
+- **Brand area**: logo `logo-white.png` con `mix-blend-mode: screen` (elimina sfondo nero PNG)
+- **Nav items**: gap 8px, padding 7px 10px, border-radius 8px
+- **Active state**: `background: rgba(255,255,255,0.08)`, text bianco pieno
+- **Live indicator**: in fondo, dot verde `#00A63D`, testo mono muted
+- **Badge count**: pill 9999px, blu o amber, margin-left: auto
+
+### Topbar
+```
+background: #fff;
+border-bottom: 1px solid #e5e5e5;
+padding: 10px 16px;
+```
+
+### Stats grid
+```
+display: grid;
+grid-template-columns: repeat(4, 1fr);
+gap: 8px;
+padding: 12px 16px;
+background: #f7f7f4;
+```
+
+### Card body
+```
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 8px;
+padding: 0 16px 16px;
+```
+
+### Card
+```
+background: #fff;
+border: 1px solid #e5e5e5;
+border-radius: 12px;
+padding: 12px;
+box-shadow: rgba(0,0,0,0.03) 0 1px 3px;
+```
+
+### Riga item (dentro card)
+```
+background: #f7f7f4;
+border: 1px solid #e5e5e5;
+border-radius: 8px;
+padding: 7px 9px;
+margin-bottom: 4px;
+```
+
+---
+
+## Componenti
+
+### Stat card
+```css
+.stat {
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: rgba(0,0,0,0.03) 0 1px 2px;
+}
+.stat-value {
+  font-size: 24px;
+  font-weight: 400;
+  color: #26251e;
+  letter-spacing: -0.6px;
+  line-height: 1.1;
+}
+.stat-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: #7a7974;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+```
+
+### Pill badge (stato)
+```css
+.pill {
+  font-size: 9px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 9999px;
+}
+```
+
+### Buttons — REGOLA CRITICA: border-radius 980px (Apple España)
+```css
+/* Primario blu */
+.btn-primary {
+  background: #2E6FF2;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 400;
+  padding: 6px 14px;
+  border-radius: 980px;
+  border: none;
+}
+
+/* Secondario ink */
+.btn-ink {
+  background: #26251e;
+  color: #f7f7f4;
+  font-size: 11px;
+  padding: 6px 14px;
+  border-radius: 980px;
+  border: none;
+}
+
+/* Ghost */
+.btn-ghost {
+  background: #f2f1ed;
+  color: #26251e;
+  font-size: 11px;
+  padding: 6px 14px;
+  border-radius: 980px;
+  border: 1px solid #cdcdc9;
+}
+```
+
+### Input / Query
+```css
+.input {
+  background: #f7f7f4;
+  border: 1px solid #cdcdc9;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: #7a7974;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+```
+
+### Card eyebrow (titolo sezione dentro card)
+```css
+.card-eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: #7a7974;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  margin-bottom: 10px;
+}
+```
+
+---
+
+## Logo
+
+- **Sidebar scura**: `public/logo-white.png` con `mix-blend-mode: screen`
+- **Area chiara** (se necessario): `public/logo-color.png` o `logo-black.png`
+- Width consigliata in sidebar: `120px`, height auto
+
+```jsx
+/* Sidebar */
+<img
+  src="/logo-white.png"
+  alt="UP CAF — Consulenza e Assistenza Fiscale"
+  style={{ width: '120px', height: 'auto', mixBlendMode: 'screen' }}
+/>
+```
+
+---
+
+## Regole assolute
+
+1. **MAI box-shadow per elevation** — usa `border: 1px solid #e5e5e5`. Shadow solo su card container (1px, opacità 0.03).
+2. **Buttons SEMPRE border-radius 980px** — mai 8px o altri valori sui bottoni.
+3. **JetBrains Mono SOLO per label/meta** — mai per nomi, titoli, body text.
+4. **Sidebar SEMPRE `#1a1917`** — non usare pure black né varianti.
+5. **Canvas SEMPRE `#f7f7f4`** — non usare `#ffffff` come background pagina.
+6. **Stat numbers: font-weight 400** — mai bold, il numero sussurra.
+7. **Badge pill: border-radius 9999px** — mai quadrati.
+8. **Non aggiungere colori** oltre quelli definiti — la palette è chiusa.
+9. **Non introdurre gradients** su superfici UI.
+10. **Non cambiare la struttura sidebar/main** senza istruzione esplicita.
+
+---
+
+## File chiave progetto
+
+```
+src/
+  components/
+    Dashboard.jsx          ← struttura 4 tab + HeaderStats
+    panels/
+      HandoffsPanel.jsx
+      SessionsPanel.jsx
+      KbQueryPanel.jsx
+      MarketingPanel.jsx
+      NormativePanel.jsx
+      ErrorLogsPanel.jsx
+      SystemStatus.jsx
+  lib/
+    gateway.js             ← chiamate API gateway Railway
+```
+
+Gateway URL: `https://gateway-production-a488.up.railway.app`
+Dashboard live: `https://upcaf-dashboard.vercel.app`
+
+---
+
+## Stack
+
+- React + Vite + Tailwind CSS
+- Deploy: Vercel (push automatico su `main`)
+- Font: Inter + JetBrains Mono via Google Fonts

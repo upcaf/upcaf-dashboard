@@ -1,0 +1,78 @@
+---
+description: Contesto generale del progetto UP CAF AI. Leggi prima di qualsiasi modifica al codice.
+globs: ["src/**/*", "*.json", "*.js", "*.ts"]
+alwaysApply: true
+---
+
+# UP CAF AI — Contesto progetto
+
+## Cos'è
+
+Dashboard React (frontend) per il sistema multi-agente UP CAF AI.
+UP CAF è un CAF/Patronato a Bassano del Grappa che gestisce conversazioni WhatsApp
+via GoHighLevel (GHL), con agenti Claude che rispondono ai clienti.
+
+La dashboard è lo strumento **interno dell'operatore** — non è pubblica.
+
+## Stack tecnico
+
+- **Frontend**: React + Vite + Tailwind CSS → Vercel
+- **Backend gateway**: Node.js ESM + Express → Railway
+- **DB**: Supabase (PostgreSQL)
+- **AI**: Anthropic Claude API (`claude-sonnet-4-6`)
+- **CRM/WhatsApp**: GoHighLevel (GHL)
+- **Email**: Resend
+
+## Endpoint gateway (Railway)
+
+```
+BASE: https://gateway-production-a488.up.railway.app
+
+POST /webhook/ghl        ← entrypoint GHL (non toccare)
+POST /operatore          ← query KB per pannello admin
+POST /genera-post        ← pipeline social (caption IG/FB)
+POST /genera-marketing   ← copy WA/email
+POST /genera-html-email  ← email HTML GHL
+POST /normative/poll     ← polling normative istituzionali
+GET  /health             ← liveness check
+```
+
+## Struttura dashboard (4 tab)
+
+```
+Dashboard.jsx
+├── HeaderStats          ← sempre visibile sopra i tab
+├── Tab: Operativo
+│   ├── HandoffsPanel    ← handoff aperti da Supabase
+│   ├── SessionsPanel    ← session_logs da Supabase
+│   └── KbQueryPanel     ← POST /operatore
+├── Tab: Marketing
+│   └── MarketingPanel   ← POST /genera-marketing + /genera-html-email
+├── Tab: Normative
+│   └── NormativePanel   ← POST /normative/poll + /genera-post
+│       └── CaptionBox   ← textarea editabile, stato per atto
+└── Tab: Sistema
+    ├── ErrorLogsPanel
+    └── SystemStatus     ← GET /health
+```
+
+## Regole di sviluppo
+
+1. **Non modificare la struttura logica** dei pannelli senza istruzione esplicita.
+2. **Non cambiare le chiamate API** in `src/lib/gateway.js`.
+3. **Non introdurre nuove dipendenze** senza conferma.
+4. **Tailwind utility classes** per layout/spacing; CSS custom per design system.
+5. Il progetto è **ESM** (`"type": "module"`) — niente `require()`.
+6. Deploy automatico su Vercel — ogni push su `main` va in produzione.
+
+## Variabili ambiente (Vercel)
+
+```
+VITE_GATEWAY_URL=https://gateway-production-a488.up.railway.app
+```
+
+## Contatti e asset
+
+- Logo: `public/logo-white.png` (sidebar), `public/logo-color.png` (chiaro)
+- Appuntamenti: https://appt.link/appuntamento-u-p-caf
+- Operatore: upcaf.bdg@gmail.com
