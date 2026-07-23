@@ -9,8 +9,8 @@
 // - totale handoff (non scaricati dal denominatore — denominatore onesto)
 
 import { useCallback, useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
-import { Card, ErrorBanner, LoadingState } from './ui'
+import { supabase } from '../../lib/supabase'
+import { Card, ErrorBanner, LoadingState } from '../ui'
 
 function MetricBox({ label, value, sub, color = 'slate' }) {
   const colors = {
