@@ -7,7 +7,6 @@
 // Real-time: polling ogni 15 secondi.
 
 import { useCallback, useEffect, useState } from 'react'
-import { gateway } from '../../lib/gateway'
 import { Card, EmptyState, ErrorBanner, LoadingState, formatDateTime } from '../ui'
 
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL || 'https://gateway-production-a488.up.railway.app'
