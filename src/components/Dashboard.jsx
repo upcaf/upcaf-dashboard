@@ -8,7 +8,10 @@ import NormativePanel from './panels/NormativePanel'
 import ErrorLogsPanel from './panels/ErrorLogsPanel'
 import SystemStatus from './panels/SystemStatus'
 import AccuracyPanel from './panels/AccuracyPanel'
+import ApprovalsPanel from './panels/ApprovalsPanel'
 import { btnSecondary } from './ui'
+
+const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL || 'https://gateway-production-a488.up.railway.app'
 
 const NAV = [
   { id: 'operativo', label: 'Operativo', icon: 'ti-layout-dashboard' },
@@ -34,7 +37,7 @@ function useDashboardStats() {
     const end = endOfTodayISO()
 
     try {
-      const [sessionsRes, handoffsRes, resolvedRes, normativeRes] =
+      const [sessionsRes, handoffsRes, resolvedRes, normativeRes, approvalsRes] =
         await Promise.all([
           supabase
             .from('session_logs')
@@ -55,6 +58,10 @@ function useDashboardStats() {
             .from('normative_updates')
             .select('id', { count: 'exact', head: true })
             .or('letto.is.null,letto.eq.false'),
+          supabase
+            .from('pending_approvals')
+            .select('id', { count: 'exact', head: true })
+            .eq('stato', 'in_attesa'),
         ])
 
       if (sessionsRes.error) throw sessionsRes.error
@@ -75,6 +82,7 @@ function useDashboardStats() {
         sessioniOggi: sessionsRes.count ?? 0,
         qgApprovati,
         novitaNormative: normativeRes.count ?? 0,
+        daApprovare: approvalsRes.count ?? 0,
       })
     } catch {
       /* mantieni valori precedenti */
@@ -83,7 +91,7 @@ function useDashboardStats() {
 
   useEffect(() => {
     load()
-    const interval = setInterval(load, 60_000)
+    const interval = setInterval(load, 30_000)
     return () => clearInterval(interval)
   }, [load])
 
@@ -103,10 +111,12 @@ export default function Dashboard({ onLogout }) {
 
   const handoffCount = stats.handoffAperti ?? 0
   const normativeCount = stats.novitaNormative ?? 0
+  const daApprovareCount = stats.daApprovare ?? 0
+  const totalAlerts = handoffCount + daApprovareCount
 
   const badgeFor = (id) => {
-    if (id === 'operativo' && handoffCount > 0) {
-      return { n: handoffCount, cls: 'bg-uc-amber' }
+    if (id === 'operativo' && totalAlerts > 0) {
+      return { n: totalAlerts, cls: daApprovareCount > 0 ? 'bg-blue-500' : 'bg-uc-amber' }
     }
     if (id === 'normative' && normativeCount > 0) {
       return { n: normativeCount, cls: 'bg-uc-blue' }
@@ -175,9 +185,7 @@ export default function Dashboard({ onLogout }) {
             <h1 className="text-sm font-semibold tracking-tight text-uc-ink">
               {NAV.find((n) => n.id === active)?.label}
             </h1>
-            <span className="text-uc-border" aria-hidden="true">
-              ·
-            </span>
+            <span className="text-uc-border" aria-hidden="true">·</span>
             <span className="text-xs text-uc-muted">{SUBTITLES[active]}</span>
           </div>
           <div className="flex items-center gap-2">
@@ -185,10 +193,10 @@ export default function Dashboard({ onLogout }) {
             <button
               type="button"
               className="relative flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-uc-border bg-white text-uc-muted transition hover:bg-uc-canvas"
-              aria-label={`${handoffCount} handoff in attesa`}
+              aria-label={`${totalAlerts} notifiche`}
             >
               <i className="ti ti-bell text-[15px]" aria-hidden="true" />
-              {handoffCount > 0 && (
+              {totalAlerts > 0 && (
                 <span
                   className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full border border-white bg-uc-amber"
                   aria-hidden="true"
@@ -227,6 +235,11 @@ function ViewOperativo({ stats }) {
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <HandoffsPanel />
         <SessionsPanel />
+        {/* Gamba 3 — approvazioni DA_APPROVARE */}
+        <div className="lg:col-span-2">
+          <ApprovalsPanel />
+        </div>
+        {/* Gamba 1 — metrica accuratezza */}
         <div className="lg:col-span-2">
           <AccuracyPanel />
         </div>
@@ -250,28 +263,17 @@ function ViewSistema() {
 function HeaderStats({ stats }) {
   const items = [
     { val: stats.handoffAperti ?? 0, label: 'Handoff aperti', color: 'text-uc-amber' },
-    { val: stats.sessioniOggi ?? 0, label: 'Sessioni oggi', color: 'text-uc-blue' },
+    { val: stats.daApprovare ?? 0, label: 'Da approvare', color: 'text-blue-600' },
     { val: `${stats.qgApprovati ?? 0}%`, label: 'QG approvati', color: 'text-uc-green' },
     { val: stats.novitaNormative ?? 0, label: 'Novità normative', color: 'text-uc-ink' },
   ]
 
   return (
-    <div
-      className="grid grid-cols-2 gap-3 xl:grid-cols-4"
-      role="region"
-      aria-label="Riepilogo"
-    >
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4" role="region" aria-label="Riepilogo">
       {items.map(({ val, label, color }) => (
-        <div
-          key={label}
-          className="rounded-xl border border-uc-border bg-white p-4"
-        >
-          <div className={`text-[26px] font-normal tracking-tight ${color}`}>
-            {val}
-          </div>
-          <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-uc-muted">
-            {label}
-          </div>
+        <div key={label} className="rounded-xl border border-uc-border bg-white p-4">
+          <div className={`text-[26px] font-normal tracking-tight ${color}`}>{val}</div>
+          <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-uc-muted">{label}</div>
         </div>
       ))}
     </div>
