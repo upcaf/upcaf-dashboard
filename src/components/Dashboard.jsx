@@ -7,6 +7,7 @@ import MarketingPanel from './panels/MarketingPanel'
 import NormativePanel from './panels/NormativePanel'
 import ErrorLogsPanel from './panels/ErrorLogsPanel'
 import SystemStatus from './panels/SystemStatus'
+import AccuracyPanel from './panels/AccuracyPanel'
 import { btnSecondary } from './ui'
 
 const NAV = [
@@ -123,7 +124,7 @@ export default function Dashboard({ onLogout }) {
           <div className="text-[15px] font-semibold tracking-tight text-[#f5f5f7]">
             UP CAF <span className="text-uc-blue">AI</span>
           </div>
-          <div className="mt-0.5 text-[10px] text-white/25">Gateway v2.22</div>
+          <div className="mt-0.5 text-[10px] text-white/25">Gateway v2.23</div>
         </div>
 
         <nav className="flex flex-1 flex-col gap-0.5 px-2 py-4" aria-label="Sezioni">
@@ -164,7 +165,7 @@ export default function Dashboard({ onLogout }) {
             <span className="h-1.5 w-1.5 rounded-full bg-uc-green" aria-hidden="true" />
             <span className="text-[10px] font-medium text-uc-green">Live</span>
           </div>
-          <span className="text-[10px] text-white/20">v2.22</span>
+          <span className="text-[10px] text-white/20">v2.23</span>
         </div>
       </aside>
 
@@ -226,6 +227,9 @@ function ViewOperativo({ stats }) {
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <HandoffsPanel />
         <SessionsPanel />
+        <div className="lg:col-span-2">
+          <AccuracyPanel />
+        </div>
         <div className="lg:col-span-2">
           <KbQueryPanel />
         </div>
