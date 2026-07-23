@@ -11,6 +11,12 @@ import {
   rowSub,
 } from '../ui'
 
+const ESITO_VARIANT = {
+  risolto: 'green',
+  errore: 'red',
+  handoff: 'amber',
+}
+
 export default function SessionsPanel() {
   const [sessions, setSessions] = useState([])
   const [allServices, setAllServices] = useState([])
@@ -24,7 +30,6 @@ export default function SessionsPanel() {
     supabase
       .from('session_logs')
       .select('servizio')
-      .eq('esito', 'risolto')
       .then(({ data }) => {
         const set = new Set((data ?? []).map((r) => r.servizio).filter(Boolean))
         setAllServices([...set].sort())
@@ -44,7 +49,6 @@ export default function SessionsPanel() {
     let query = supabase
       .from('session_logs')
       .select('*')
-      .eq('esito', 'risolto')
       .order('created_at', { ascending: false })
       .limit(100)
 
@@ -77,7 +81,7 @@ export default function SessionsPanel() {
   return (
     <Card
       label="Sessioni AI"
-      title="Risolte autonomamente"
+      title="Tutte le sessioni"
       action={
         <div className="flex flex-wrap gap-2">
           <input
@@ -106,7 +110,7 @@ export default function SessionsPanel() {
       {loading ? (
         <LoadingState />
       ) : sessions.length === 0 ? (
-        <EmptyState message="Nessuna sessione risolta trovata" />
+        <EmptyState message="Nessuna sessione trovata" />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -134,7 +138,9 @@ export default function SessionsPanel() {
                     {session.servizio || '—'}
                   </td>
                   <td className="py-2">
-                    <span className={pillClass('green')}>{session.esito}</span>
+                    <span className={pillClass(ESITO_VARIANT[session.esito] ?? 'neutral')}>
+                      {session.esito}
+                    </span>
                   </td>
                 </tr>
               ))}
