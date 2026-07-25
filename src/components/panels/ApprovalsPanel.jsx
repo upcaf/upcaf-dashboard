@@ -1,9 +1,15 @@
 // src/components/panels/ApprovalsPanel.jsx
 // Gamba 3 — Pannello approvazioni DA_APPROVARE
-// Versione: 1.0 — 23 luglio 2026
+// Versione: 1.1 — 25 luglio 2026
+//
+// v1.1: mostra il MESSAGGIO DEL CLIENTE sopra la bozza.
+//   Senza la domanda originale l'operatore non può giudicare se la risposta è
+//   pertinente: approverebbe alla cieca proprio sui casi con conseguenza legale
+//   diretta, cioè quelli per cui questo pannello esiste.
+//   Aggiunto anche il nome del contatto quando disponibile.
 //
 // Mostra le risposte in attesa di approvazione operatore.
-// Per ogni bozza: testo modificabile, citazioni KB, bottoni Invia / Rifiuta.
+// Per ogni bozza: domanda cliente, testo modificabile, citazioni KB, Invia / Rifiuta.
 // Real-time: polling ogni 15 secondi.
 
 import { useCallback, useEffect, useState } from 'react'
@@ -89,9 +95,13 @@ function ApprovalCard({ item, onSent, onRejected }) {
       {/* Header */}
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               {item.servizio || '—'}
+            </span>
+            <span className="text-xs text-slate-400">·</span>
+            <span className="text-xs font-medium text-slate-600">
+              {item.contact_name || 'nome non noto'}
             </span>
             <span className="text-xs text-slate-400">·</span>
             <span className="text-xs text-slate-400">
@@ -112,14 +122,36 @@ function ApprovalCard({ item, onSent, onRejected }) {
         </span>
       </div>
 
+      {/* Messaggio del cliente — v1.1
+          È il riferimento per giudicare la risposta: sta sopra la bozza,
+          in evidenza, non nascosto dietro un toggle. */}
+      <div className="mb-3 rounded-lg border-l-4 border-slate-400 bg-slate-50 px-3 py-2">
+        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Il cliente ha scritto
+        </div>
+        {item.messaggio_ricevuto ? (
+          <p className="whitespace-pre-wrap text-sm text-slate-800">
+            {item.messaggio_ricevuto}
+          </p>
+        ) : (
+          <p className="text-sm italic text-slate-400">
+            Messaggio non registrato (bozza creata prima della v1.1) —
+            controlla la conversazione in GHL prima di approvare.
+          </p>
+        )}
+      </div>
+
       {/* Motivo revisione */}
       {item.motivo && (
-        <div className="mb-3 rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-600">
+        <div className="mb-3 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-800">
           <span className="font-medium">Motivo revisione:</span> {item.motivo}
         </div>
       )}
 
-      {/* Testo modificabile */}
+      {/* Bozza di risposta — modificabile */}
+      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Bozza di risposta
+      </div>
       <textarea
         value={testo}
         onChange={e => setTesto(e.target.value)}
@@ -231,7 +263,8 @@ export default function ApprovalsPanel() {
         <div className="flex flex-col gap-3">
           <p className="text-xs text-slate-500">
             Queste risposte contengono dati normativi con conseguenza legale diretta.
-            Controlla, modifica se necessario, poi invia.
+            Leggi la domanda del cliente, controlla che la bozza risponda davvero a
+            quella, modifica se necessario, poi invia.
             Il cliente ha già ricevuto un messaggio ponte.
           </p>
           {items.map(item => (
