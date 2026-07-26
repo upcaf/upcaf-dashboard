@@ -14,17 +14,19 @@ import { btnSecondary } from './ui'
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL || 'https://gateway-production-a488.up.railway.app'
 
 const NAV = [
-  { id: 'operativo', label: 'Operativo', icon: 'ti-layout-dashboard' },
-  { id: 'marketing', label: 'Marketing', icon: 'ti-speakerphone' },
-  { id: 'normative', label: 'Normative', icon: 'ti-news' },
-  { id: 'sistema', label: 'Sistema', icon: 'ti-activity' },
+  { id: 'operativo',  label: 'Operativo',        icon: 'ti-layout-dashboard' },
+  { id: 'marketing',  label: 'Marketing',         icon: 'ti-speakerphone'     },
+  { id: 'normative',  label: 'Normative',         icon: 'ti-news'             },
+  { id: 'kb',         label: 'Consulente AI KB',  icon: 'ti-database-search'  },
+  { id: 'sistema',    label: 'Sistema',           icon: 'ti-activity'         },
 ]
 
 const SUBTITLES = {
   operativo: 'Panoramica sessione',
-  marketing: 'Copy e campagne',
-  normative: 'Aggiornamenti normativi',
-  sistema: 'Log e stato gateway',
+  marketing:  'Copy e campagne',
+  normative:  'Aggiornamenti normativi',
+  kb:         'Consulta la knowledge base',
+  sistema:    'Log e stato gateway',
 }
 
 function useDashboardStats() {
@@ -34,7 +36,7 @@ function useDashboardStats() {
     if (!supabase) return
 
     const start = startOfTodayISO()
-    const end = endOfTodayISO()
+    const end   = endOfTodayISO()
 
     try {
       const [sessionsRes, handoffsRes, resolvedRes, normativeRes, approvalsRes] =
@@ -69,20 +71,19 @@ function useDashboardStats() {
       if (resolvedRes.error) throw resolvedRes.error
       if (normativeRes.error) throw normativeRes.error
 
-      const openHandoffs = handoffsRes.count ?? 0
+      const openHandoffs        = handoffsRes.count ?? 0
       const resolvedAutonomously = resolvedRes.count ?? 0
-      const denominator = resolvedAutonomously + openHandoffs
-      const qgApprovati =
-        denominator > 0
-          ? Math.round((resolvedAutonomously / denominator) * 100)
-          : 0
+      const denominator          = resolvedAutonomously + openHandoffs
+      const qgApprovati          = denominator > 0
+        ? Math.round((resolvedAutonomously / denominator) * 100)
+        : 0
 
       setStats({
-        handoffAperti: openHandoffs,
-        sessioniOggi: sessionsRes.count ?? 0,
+        handoffAperti:    openHandoffs,
+        sessioniOggi:     sessionsRes.count ?? 0,
         qgApprovati,
-        novitaNormative: normativeRes.count ?? 0,
-        daApprovare: approvalsRes.count ?? 0,
+        novitaNormative:  normativeRes.count ?? 0,
+        daApprovare:      approvalsRes.count ?? 0,
       })
     } catch {
       /* mantieni valori precedenti */
@@ -104,15 +105,15 @@ export default function Dashboard({ onLogout }) {
 
   const today = new Date().toLocaleDateString('it-IT', {
     weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
+    day:     'numeric',
+    month:   'short',
+    year:    'numeric',
   })
 
-  const handoffCount = stats.handoffAperti ?? 0
-  const normativeCount = stats.novitaNormative ?? 0
-  const daApprovareCount = stats.daApprovare ?? 0
-  const totalAlerts = handoffCount + daApprovareCount
+  const handoffCount    = stats.handoffAperti   ?? 0
+  const normativeCount  = stats.novitaNormative  ?? 0
+  const daApprovareCount = stats.daApprovare     ?? 0
+  const totalAlerts      = handoffCount + daApprovareCount
 
   const badgeFor = (id) => {
     if (id === 'operativo' && totalAlerts > 0) {
@@ -142,7 +143,7 @@ export default function Dashboard({ onLogout }) {
             Menu
           </div>
           {NAV.map(({ id, label, icon }) => {
-            const badge = badgeFor(id)
+            const badge    = badgeFor(id)
             const isActive = active === id
             return (
               <button
@@ -157,10 +158,10 @@ export default function Dashboard({ onLogout }) {
                 }`}
               >
                 <i className={`ti ${icon} text-[15px]`} aria-hidden="true" />
-                <span>{label}</span>
+                <span className="truncate">{label}</span>
                 {badge && (
                   <span
-                    className={`ml-auto rounded-full px-1.5 py-px text-[10px] font-semibold text-white ${badge.cls}`}
+                    className={`ml-auto shrink-0 rounded-full px-1.5 py-px text-[10px] font-semibold text-white ${badge.cls}`}
                   >
                     {badge.n}
                   </span>
@@ -221,36 +222,50 @@ export default function Dashboard({ onLogout }) {
           {active === 'operativo' && <ViewOperativo stats={stats} />}
           {active === 'marketing' && <MarketingPanel />}
           {active === 'normative' && <NormativePanel />}
-          {active === 'sistema' && <ViewSistema />}
+          {active === 'kb'        && <ViewKB />}
+          {active === 'sistema'   && <ViewSistema />}
         </main>
       </div>
     </div>
   )
 }
 
+// ─── TAB OPERATIVO ───────────────────────────────────────────────────────────
+// Layout concordato:
+//   1. HeaderStats (4 cards)
+//   2. ApprovalsPanel + HandoffsPanel affiancati
+//   3. SessionsPanel full width
+//   4. AccuracyPanel full width
 function ViewOperativo({ stats }) {
   return (
     <div className="flex flex-col gap-3 p-4 pb-5 sm:px-5">
       <HeaderStats stats={stats} />
+
+      {/* Riga "da gestire": approvazioni + handoff affiancati */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <ApprovalsPanel />
         <HandoffsPanel />
-        <SessionsPanel />
-        {/* Gamba 3 — approvazioni DA_APPROVARE */}
-        <div className="lg:col-span-2">
-          <ApprovalsPanel />
-        </div>
-        {/* Gamba 1 — metrica accuratezza */}
-        <div className="lg:col-span-2">
-          <AccuracyPanel />
-        </div>
-        <div className="lg:col-span-2">
-          <KbQueryPanel />
-        </div>
       </div>
+
+      {/* Sessioni AI — full width */}
+      <SessionsPanel />
+
+      {/* Gamba 1 — metrica accuratezza — full width */}
+      <AccuracyPanel />
     </div>
   )
 }
 
+// ─── TAB CONSULENTE AI KB ────────────────────────────────────────────────────
+function ViewKB() {
+  return (
+    <div className="p-4 pb-5 sm:px-5">
+      <KbQueryPanel />
+    </div>
+  )
+}
+
+// ─── TAB SISTEMA ─────────────────────────────────────────────────────────────
 function ViewSistema() {
   return (
     <div className="grid grid-cols-1 gap-3 p-4 pb-5 sm:px-5 lg:grid-cols-2">
@@ -260,12 +275,13 @@ function ViewSistema() {
   )
 }
 
+// ─── HEADER STATS ────────────────────────────────────────────────────────────
 function HeaderStats({ stats }) {
   const items = [
-    { val: stats.handoffAperti ?? 0, label: 'Handoff aperti', color: 'text-uc-amber' },
-    { val: stats.daApprovare ?? 0, label: 'Da approvare', color: 'text-blue-600' },
-    { val: `${stats.qgApprovati ?? 0}%`, label: 'QG approvati', color: 'text-uc-green' },
-    { val: stats.novitaNormative ?? 0, label: 'Novità normative', color: 'text-uc-ink' },
+    { val: stats.handoffAperti  ?? 0,    label: 'Handoff aperti',   color: 'text-uc-amber' },
+    { val: stats.daApprovare    ?? 0,    label: 'Da approvare',      color: 'text-blue-600' },
+    { val: `${stats.qgApprovati ?? 0}%`, label: 'QG approvati',      color: 'text-uc-green' },
+    { val: stats.novitaNormative ?? 0,   label: 'Novità normative',  color: 'text-uc-ink'   },
   ]
 
   return (
@@ -273,7 +289,9 @@ function HeaderStats({ stats }) {
       {items.map(({ val, label, color }) => (
         <div key={label} className="rounded-xl border border-uc-border bg-white p-4">
           <div className={`text-[26px] font-normal tracking-tight ${color}`}>{val}</div>
-          <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-uc-muted">{label}</div>
+          <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-uc-muted">
+            {label}
+          </div>
         </div>
       ))}
     </div>
