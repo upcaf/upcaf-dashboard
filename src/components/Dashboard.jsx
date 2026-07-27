@@ -1,3 +1,6 @@
+// src/components/Dashboard.jsx
+// v2.24 — 27 luglio 2026: aggiunto tab WA Operativo (Canale 3)
+
 import { useCallback, useEffect, useState } from 'react'
 import { endOfTodayISO, startOfTodayISO, supabase } from '../lib/supabase'
 import HandoffsPanel from './panels/HandoffsPanel'
@@ -9,12 +12,14 @@ import ErrorLogsPanel from './panels/ErrorLogsPanel'
 import SystemStatus from './panels/SystemStatus'
 import AccuracyPanel from './panels/AccuracyPanel'
 import ApprovalsPanel from './panels/ApprovalsPanel'
+import WhatsAppPanel from './panels/WhatsAppPanel'
 import { btnSecondary } from './ui'
 
 const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL || 'https://gateway-production-a488.up.railway.app'
 
 const NAV = [
   { id: 'operativo',  label: 'Operativo',        icon: 'ti-layout-dashboard' },
+  { id: 'whatsapp',   label: 'WA Operativo',      icon: 'ti-brand-whatsapp'   },
   { id: 'marketing',  label: 'Marketing',         icon: 'ti-speakerphone'     },
   { id: 'normative',  label: 'Normative',         icon: 'ti-news'             },
   { id: 'kb',         label: 'Consulente AI KB',  icon: 'ti-database-search'  },
@@ -23,6 +28,7 @@ const NAV = [
 
 const SUBTITLES = {
   operativo: 'Panoramica sessione',
+  whatsapp:  'Messaggi numero operativo',
   marketing:  'Copy e campagne',
   normative:  'Aggiornamenti normativi',
   kb:         'Consulta la knowledge base',
@@ -39,7 +45,7 @@ function useDashboardStats() {
     const end   = endOfTodayISO()
 
     try {
-      const [sessionsRes, handoffsRes, resolvedRes, normativeRes, approvalsRes] =
+      const [sessionsRes, handoffsRes, resolvedRes, normativeRes, approvalsRes, waPendingRes] =
         await Promise.all([
           supabase
             .from('session_logs')
@@ -64,6 +70,10 @@ function useDashboardStats() {
             .from('pending_approvals')
             .select('id', { count: 'exact', head: true })
             .eq('stato', 'in_attesa'),
+          supabase
+            .from('whatsapp_pending')
+            .select('id', { count: 'exact', head: true })
+            .eq('stato', 'in_attesa'),
         ])
 
       if (sessionsRes.error) throw sessionsRes.error
@@ -71,7 +81,7 @@ function useDashboardStats() {
       if (resolvedRes.error) throw resolvedRes.error
       if (normativeRes.error) throw normativeRes.error
 
-      const openHandoffs        = handoffsRes.count ?? 0
+      const openHandoffs         = handoffsRes.count ?? 0
       const resolvedAutonomously = resolvedRes.count ?? 0
       const denominator          = resolvedAutonomously + openHandoffs
       const qgApprovati          = denominator > 0
@@ -84,6 +94,7 @@ function useDashboardStats() {
         qgApprovati,
         novitaNormative:  normativeRes.count ?? 0,
         daApprovare:      approvalsRes.count ?? 0,
+        waPending:        waPendingRes.count ?? 0,
       })
     } catch {
       /* mantieni valori precedenti */
@@ -110,14 +121,18 @@ export default function Dashboard({ onLogout }) {
     year:    'numeric',
   })
 
-  const handoffCount    = stats.handoffAperti   ?? 0
-  const normativeCount  = stats.novitaNormative  ?? 0
-  const daApprovareCount = stats.daApprovare     ?? 0
+  const handoffCount     = stats.handoffAperti   ?? 0
+  const normativeCount   = stats.novitaNormative  ?? 0
+  const daApprovareCount = stats.daApprovare      ?? 0
+  const waPendingCount   = stats.waPending        ?? 0
   const totalAlerts      = handoffCount + daApprovareCount
 
   const badgeFor = (id) => {
     if (id === 'operativo' && totalAlerts > 0) {
       return { n: totalAlerts, cls: daApprovareCount > 0 ? 'bg-blue-500' : 'bg-uc-amber' }
+    }
+    if (id === 'whatsapp' && waPendingCount > 0) {
+      return { n: waPendingCount, cls: 'bg-green-500' }
     }
     if (id === 'normative' && normativeCount > 0) {
       return { n: normativeCount, cls: 'bg-uc-blue' }
@@ -135,7 +150,7 @@ export default function Dashboard({ onLogout }) {
           <div className="text-[15px] font-semibold tracking-tight text-[#f5f5f7]">
             UP CAF <span className="text-uc-blue">AI</span>
           </div>
-          <div className="mt-0.5 text-[10px] text-white/25">Gateway v2.23</div>
+          <div className="mt-0.5 text-[10px] text-white/25">Gateway v2.29</div>
         </div>
 
         <nav className="flex flex-1 flex-col gap-0.5 px-2 py-4" aria-label="Sezioni">
@@ -176,7 +191,7 @@ export default function Dashboard({ onLogout }) {
             <span className="h-1.5 w-1.5 rounded-full bg-uc-green" aria-hidden="true" />
             <span className="text-[10px] font-medium text-uc-green">Live</span>
           </div>
-          <span className="text-[10px] text-white/20">v2.23</span>
+          <span className="text-[10px] text-white/20">v2.29</span>
         </div>
       </aside>
 
@@ -220,6 +235,7 @@ export default function Dashboard({ onLogout }) {
 
         <main className="flex-1 overflow-y-auto" aria-label={`Sezione ${active}`}>
           {active === 'operativo' && <ViewOperativo stats={stats} />}
+          {active === 'whatsapp'  && <ViewWhatsApp />}
           {active === 'marketing' && <MarketingPanel />}
           {active === 'normative' && <NormativePanel />}
           {active === 'kb'        && <ViewKB />}
@@ -231,27 +247,25 @@ export default function Dashboard({ onLogout }) {
 }
 
 // ─── TAB OPERATIVO ───────────────────────────────────────────────────────────
-// Layout concordato:
-//   1. HeaderStats (4 cards)
-//   2. ApprovalsPanel + HandoffsPanel affiancati
-//   3. SessionsPanel full width
-//   4. AccuracyPanel full width
 function ViewOperativo({ stats }) {
   return (
     <div className="flex flex-col gap-3 p-4 pb-5 sm:px-5">
       <HeaderStats stats={stats} />
-
-      {/* Riga "da gestire": approvazioni + handoff affiancati */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <ApprovalsPanel />
         <HandoffsPanel />
       </div>
-
-      {/* Sessioni AI — full width */}
       <SessionsPanel />
-
-      {/* Gamba 1 — metrica accuratezza — full width */}
       <AccuracyPanel />
+    </div>
+  )
+}
+
+// ─── TAB WA OPERATIVO ────────────────────────────────────────────────────────
+function ViewWhatsApp() {
+  return (
+    <div className="p-4 pb-5 sm:px-5">
+      <WhatsAppPanel />
     </div>
   )
 }
