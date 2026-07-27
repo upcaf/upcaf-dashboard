@@ -291,21 +291,49 @@ function ViewSistema() {
 
 // ─── HEADER STATS ────────────────────────────────────────────────────────────
 function HeaderStats({ stats }) {
+  const bozzeWa   = stats.waPending       ?? 0
+  const handoff   = stats.handoffAperti   ?? 0
+  const risolti   = `${stats.qgApprovati  ?? 0}%`
+  const normative = stats.novitaNormative ?? 0
+
   const items = [
-    { val: stats.handoffAperti  ?? 0,    label: 'Handoff aperti',   color: 'text-uc-amber' },
-    { val: stats.daApprovare    ?? 0,    label: 'Da approvare',      color: 'text-blue-600' },
-    { val: `${stats.qgApprovati ?? 0}%`, label: 'QG approvati',      color: 'text-uc-green' },
-    { val: stats.novitaNormative ?? 0,   label: 'Novità normative',  color: 'text-uc-ink'   },
+    {
+      val:   bozzeWa,
+      label: 'Bozze in attesa',
+      sub:   'WhatsApp — da approvare',
+      color: bozzeWa > 0 ? 'text-red-500' : 'text-uc-ink',
+    },
+    {
+      val:   handoff,
+      label: 'Handoff aperti',
+      sub:   'GHL + WhatsApp operativo',
+      color: handoff > 0 ? 'text-uc-amber' : 'text-uc-ink',
+    },
+    {
+      val:   risolti,
+      label: 'QG approvati',
+      sub:   'Risolti autonomamente',
+      color: 'text-uc-green',
+    },
+    {
+      val:   normative,
+      label: 'Novità normative',
+      sub:   'Non ancora lette',
+      color: normative > 0 ? 'text-uc-blue' : 'text-uc-ink',
+    },
   ]
 
   return (
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4" role="region" aria-label="Riepilogo">
-      {items.map(({ val, label, color }) => (
+      {items.map(({ val, label, sub, color }) => (
         <div key={label} className="rounded-xl border border-uc-border bg-white p-4">
           <div className={`text-[26px] font-normal tracking-tight ${color}`}>{val}</div>
           <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-uc-muted">
             {label}
           </div>
+          {sub && (
+            <div className="mt-0.5 text-[10px] text-uc-muted/60">{sub}</div>
+          )}
         </div>
       ))}
     </div>
