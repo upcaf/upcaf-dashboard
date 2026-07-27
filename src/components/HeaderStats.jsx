@@ -1,18 +1,18 @@
-import { useCallback, useEffect, useState } from 'react'
-import { endOfTodayISO, startOfTodayISO, supabase } from '../lib/supabase'
-import { Card, ErrorBanner, LoadingState } from './ui'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from 'react'
+import { endOfTodayISO, startOfTodayISO, supabase } from '../../lib/supabase'
+import { ErrorBanner, LoadingState } from '../ui'
 
-function StatCard({ label, value, sub }) {
+function StatCard({ label, value, sub, valueClass = '' }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-sm font-medium text-slate-500">{label}</p>
-      <p className="mt-2 text-3xl font-bold text-brand-primary">{value}</p>
-      {sub && <p className="mt-1 text-xs text-slate-400">{sub}</p>}
+    <div className="stat">
+      <p className={`stat-value${valueClass ? ` ${valueClass}` : ''}`}>{value}</p>
+      <p className="stat-label">{label}</p>
+      {sub && <p className="stat-sub">{sub}</p>}
     </div>
   )
 }
 
-export default function HeaderStats() {
+const HeaderStats = forwardRef(function HeaderStats(_props, ref) {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -23,48 +23,71 @@ export default function HeaderStats() {
       setLoading(false)
       return
     }
-
     setLoading(true)
     setError(null)
-
     const start = startOfTodayISO()
     const end = endOfTodayISO()
 
     try {
-      const [sessionsRes, handoffsRes, resolvedRes] = await Promise.all([
+      const [
+        sessionsRes,
+        handoffsGhlRes,
+        handoffsWaRes,
+        resolvedRes,
+        bozzeWaRes,
+      ] = await Promise.all([
+        // Sessioni totali oggi (session_logs — GHL + operatore)
         supabase
           .from('session_logs')
           .select('id', { count: 'exact', head: true })
           .gte('created_at', start)
           .lte('created_at', end),
+
+        // Handoff aperti GHL
         supabase
           .from('pending_handoffs')
           .select('id', { count: 'exact', head: true })
           .eq('stato', 'aperto'),
+
+        // Handoff aperti Canale 3 (whatsapp_pending con handoff_richiesto)
+        supabase
+          .from('whatsapp_pending')
+          .select('id', { count: 'exact', head: true })
+          .eq('handoff_richiesto', true)
+          .eq('stato', 'in_attesa'),
+
+        // Risolti autonomamente oggi
         supabase
           .from('session_logs')
           .select('id', { count: 'exact', head: true })
           .eq('esito', 'risolto')
           .gte('created_at', start)
           .lte('created_at', end),
+
+        // Bozze Canale 3 in attesa di approvazione
+        supabase
+          .from('whatsapp_pending')
+          .select('id', { count: 'exact', head: true })
+          .eq('stato', 'in_attesa')
+          .eq('handoff_richiesto', false),
       ])
 
       if (sessionsRes.error) throw sessionsRes.error
-      if (handoffsRes.error) throw handoffsRes.error
+      if (handoffsGhlRes.error) throw handoffsGhlRes.error
+      if (handoffsWaRes.error) throw handoffsWaRes.error
       if (resolvedRes.error) throw resolvedRes.error
+      if (bozzeWaRes.error) throw bozzeWaRes.error
 
-      const totalMessages = sessionsRes.count ?? 0
-      const openHandoffs = handoffsRes.count ?? 0
+      const totalMessages     = sessionsRes.count ?? 0
+      const openHandoffs      = (handoffsGhlRes.count ?? 0) + (handoffsWaRes.count ?? 0)
       const resolvedAutonomously = resolvedRes.count ?? 0
-      const denominator = resolvedAutonomously + openHandoffs
-      const resolutionRate =
-        denominator > 0 ? (resolvedAutonomously / denominator) * 100 : null
+      const bozzeInAttesa     = bozzeWaRes.count ?? 0
 
       setStats({
         totalMessages,
         openHandoffs,
         resolvedAutonomously,
-        resolutionRate,
+        bozzeInAttesa,
       })
     } catch (err) {
       setError(err.message)
@@ -73,46 +96,23 @@ export default function HeaderStats() {
     }
   }, [])
 
+  useImperativeHandle(ref, () => ({ refresh: load }), [load])
+
   useEffect(() => {
     load()
     const interval = setInterval(load, 60_000)
     return () => clearInterval(interval)
   }, [load])
 
-  const today = new Date().toLocaleDateString('it-IT', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
-
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium uppercase tracking-wide text-brand-accent">
-            UP CAF AI
-          </p>
-          <h1 className="text-2xl font-bold text-brand-primary">
-            Pannello Admin
-          </h1>
-          <p className="mt-1 text-sm capitalize text-slate-500">{today}</p>
-        </div>
-        <button
-          type="button"
-          onClick={load}
-          className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-brand-accent hover:text-brand-accent"
-        >
-          Aggiorna
-        </button>
-      </div>
-
+    <section className="stats-section">
       <ErrorBanner message={error} />
-
       {loading ? (
-        <LoadingState />
+        <div className="stats-loading">
+          <LoadingState />
+        </div>
       ) : stats ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="stats-grid">
           <StatCard
             label="Messaggi totali (oggi)"
             value={stats.totalMessages}
@@ -121,24 +121,25 @@ export default function HeaderStats() {
           <StatCard
             label="Handoff aperti"
             value={stats.openHandoffs}
-            sub="In attesa di operatore"
+            sub="GHL + WhatsApp operativo"
+            valueClass={stats.openHandoffs > 0 ? 'stat-value-amber' : ''}
           />
           <StatCard
             label="Risolti autonomamente"
             value={stats.resolvedAutonomously}
             sub="Esito risolto oggi"
+            valueClass="stat-value-green"
           />
           <StatCard
-            label="Tasso risoluzione"
-            value={
-              stats.resolutionRate != null
-                ? `${Math.round(stats.resolutionRate)}%`
-                : '—'
-            }
-            sub="Risolti / (Risolti + Handoff)"
+            label="Bozze in attesa"
+            value={stats.bozzeInAttesa}
+            sub="WhatsApp — da approvare"
+            valueClass={stats.bozzeInAttesa > 0 ? 'stat-value-red' : ''}
           />
         </div>
       ) : null}
-    </div>
+    </section>
   )
-}
+})
+
+export default HeaderStats
