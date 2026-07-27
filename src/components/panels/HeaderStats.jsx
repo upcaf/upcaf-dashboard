@@ -23,48 +23,71 @@ const HeaderStats = forwardRef(function HeaderStats(_props, ref) {
       setLoading(false)
       return
     }
-
     setLoading(true)
     setError(null)
-
     const start = startOfTodayISO()
     const end = endOfTodayISO()
 
     try {
-      const [sessionsRes, handoffsRes, resolvedRes] = await Promise.all([
+      const [
+        sessionsRes,
+        handoffsGhlRes,
+        handoffsWaRes,
+        resolvedRes,
+        bozzeWaRes,
+      ] = await Promise.all([
+        // Sessioni totali oggi (session_logs — GHL + operatore)
         supabase
           .from('session_logs')
           .select('id', { count: 'exact', head: true })
           .gte('created_at', start)
           .lte('created_at', end),
+
+        // Handoff aperti GHL
         supabase
           .from('pending_handoffs')
           .select('id', { count: 'exact', head: true })
           .eq('stato', 'aperto'),
+
+        // Handoff aperti Canale 3 (whatsapp_pending con handoff_richiesto)
+        supabase
+          .from('whatsapp_pending')
+          .select('id', { count: 'exact', head: true })
+          .eq('handoff_richiesto', true)
+          .eq('stato', 'in_attesa'),
+
+        // Risolti autonomamente oggi
         supabase
           .from('session_logs')
           .select('id', { count: 'exact', head: true })
           .eq('esito', 'risolto')
           .gte('created_at', start)
           .lte('created_at', end),
+
+        // Bozze Canale 3 in attesa di approvazione
+        supabase
+          .from('whatsapp_pending')
+          .select('id', { count: 'exact', head: true })
+          .eq('stato', 'in_attesa')
+          .eq('handoff_richiesto', false),
       ])
 
       if (sessionsRes.error) throw sessionsRes.error
-      if (handoffsRes.error) throw handoffsRes.error
+      if (handoffsGhlRes.error) throw handoffsGhlRes.error
+      if (handoffsWaRes.error) throw handoffsWaRes.error
       if (resolvedRes.error) throw resolvedRes.error
+      if (bozzeWaRes.error) throw bozzeWaRes.error
 
-      const totalMessages = sessionsRes.count ?? 0
-      const openHandoffs = handoffsRes.count ?? 0
+      const totalMessages     = sessionsRes.count ?? 0
+      const openHandoffs      = (handoffsGhlRes.count ?? 0) + (handoffsWaRes.count ?? 0)
       const resolvedAutonomously = resolvedRes.count ?? 0
-      const denominator = resolvedAutonomously + openHandoffs
-      const resolutionRate =
-        denominator > 0 ? (resolvedAutonomously / denominator) * 100 : null
+      const bozzeInAttesa     = bozzeWaRes.count ?? 0
 
       setStats({
         totalMessages,
         openHandoffs,
         resolvedAutonomously,
-        resolutionRate,
+        bozzeInAttesa,
       })
     } catch (err) {
       setError(err.message)
@@ -84,7 +107,6 @@ const HeaderStats = forwardRef(function HeaderStats(_props, ref) {
   return (
     <section className="stats-section">
       <ErrorBanner message={error} />
-
       {loading ? (
         <div className="stats-loading">
           <LoadingState />
@@ -99,7 +121,7 @@ const HeaderStats = forwardRef(function HeaderStats(_props, ref) {
           <StatCard
             label="Handoff aperti"
             value={stats.openHandoffs}
-            sub="In attesa di operatore"
+            sub="GHL + WhatsApp operativo"
             valueClass={stats.openHandoffs > 0 ? 'stat-value-amber' : ''}
           />
           <StatCard
@@ -109,13 +131,10 @@ const HeaderStats = forwardRef(function HeaderStats(_props, ref) {
             valueClass="stat-value-green"
           />
           <StatCard
-            label="Tasso risoluzione"
-            value={
-              stats.resolutionRate != null
-                ? `${Math.round(stats.resolutionRate)}%`
-                : '—'
-            }
-            sub="Risolti / (Risolti + Handoff)"
+            label="Bozze in attesa"
+            value={stats.bozzeInAttesa}
+            sub="WhatsApp — da approvare"
+            valueClass={stats.bozzeInAttesa > 0 ? 'stat-value-red' : ''}
           />
         </div>
       ) : null}
