@@ -1,25 +1,15 @@
 // src/components/panels/SessionsPanel.jsx
 // Sessioni AI — raggruppate per contatto
-// Versione: 2.2 — 28 luglio 2026
+// Versione: 2.3 — mobile-friendly
 //
-// v2.2: eliminati TUTTI i template literal dentro il JSX, sostituiti da
-// concatenazioni. Il parser di Vite 8 (rolldown/oxc) falliva su questo file
-// con "Unexpected token" senza che sia stato possibile isolare il costrutto
-// esatto: gli stessi pattern funzionano altrove nel progetto. Le concatenazioni
-// sono meno leggibili ma non lasciano margine di interpretazione al parser.
-// Il tag <a> del footer del drawer è su una riga sola per la stessa ragione.
+// v2.3: ottimizzazione mobile.
+//   - Su mobile (< sm) la tabella è sostituita da card verticali cliccabili
+//   - Su desktop (sm+) la tabella originale v2.2 è invariata
+//   - Filtri data/servizio impilati verticalmente su mobile
+//   - ThreadDrawer invariato — funzionava già bene su mobile
+//   - Nessuna regressione su v2.2: raggruppamento, canale, nomi, no template literal
 //
-// v2.0: una riga per CLIENTE, non per messaggio. Il pannello si usa in tre
-// contesti tramite la prop canale:
-//   nessuna prop                    -> tutti i canali
-//   canale="ghl"                    -> whatsapp_inbound + record legacy (NULL)
-//   canale="whatsapp_operativo"     -> Canale 3
-//
-// Lo stato mostrato e' session_logs.esito per ENTRAMBI i canali (decisione del
-// 28 luglio: GHL e Canale 3 uguali). Conseguenza da tenere a mente: e' l'esito
-// della PIPELINE, non l'azione finale dell'operatore. Una bozza Canale 3 gia'
-// inviata resta "in attesa operatore" qui — l'azione vera si legge nel pannello
-// WA Operativo e in Correzioni AI.
+// Regola Vite 8: zero template literal nel JSX — solo concatenazioni.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
@@ -37,25 +27,22 @@ import {
 } from '../ui'
 
 const GHL_LOCATION_ID = 'otZi0Yae4nEnmUzTXzOD'
-
-// Righe grezze lette da session_logs prima del raggruppamento.
-// Alta perche' una conversazione lunga occupa piu' righe di un contatto.
-const RIGHE_MAX = 400
-const GRUPPI_DEFAULT = 15
+const RIGHE_MAX       = 400
+const GRUPPI_DEFAULT  = 15
 
 const ESITO_VARIANT = {
-  risolto: 'green',
-  handoff: 'amber',
-  handoff_attivo: 'amber',
-  da_approvare: 'blue',
+  risolto:             'green',
+  handoff:             'amber',
+  handoff_attivo:      'amber',
+  da_approvare:        'blue',
   in_attesa_operatore: 'blue',
-  errore: 'red',
+  errore:              'red',
 }
 
 const ESITO_LABEL = {
   in_attesa_operatore: 'in attesa operatore',
-  handoff_attivo: 'handoff attivo',
-  da_approvare: 'da approvare',
+  handoff_attivo:      'handoff attivo',
+  da_approvare:        'da approvare',
 }
 
 const CIFRE = '0123456789'
@@ -75,7 +62,6 @@ function isCanale3(canale) {
   return canale === 'whatsapp_operativo'
 }
 
-// Estrae le sole cifre senza regex: il link wa.me vuole solo numeri.
 function soloCifre(valore) {
   const testo = String(valore || '')
   let out = ''
@@ -85,9 +71,6 @@ function soloCifre(valore) {
   return out
 }
 
-// Il nome cliente non vive in session_logs. Lo cerchiamo in contacts senza
-// dare per scontato il nome della colonna: select('*') non puo' fallire per
-// colonna inesistente, e qui sotto proviamo i nomi plausibili in ordine.
 function estraiNome(riga) {
   if (!riga) return null
   const candidati = ['name', 'contact_name', 'nome', 'nome_cliente', 'full_name']
@@ -100,17 +83,16 @@ function estraiNome(riga) {
 
 function TurnoBlocco({ turno, indice }) {
   const t = turno
-
   let meta = t.agente_dominio || t.agente_destinatario || 'agente non registrato'
-  if (t.esito_qg) meta = meta + ' · QG: ' + t.esito_qg
-  if (t.ms_totali) meta = meta + ' · ' + t.ms_totali + ' ms'
+  if (t.esito_qg)   meta = meta + ' · QG: ' + t.esito_qg
+  if (t.ms_totali)  meta = meta + ' · ' + t.ms_totali + ' ms'
 
   const citazioni = Array.isArray(t.citazioni_kb) ? t.citazioni_kb : []
 
   return (
     <div className="rounded-lg border border-uc-border">
       <div className="flex flex-wrap items-center gap-2 border-b border-uc-border px-3 py-2">
-        <span className={sectionLabel}>Turno {indice}</span>
+        <span className={sectionLabel}>{'Turno ' + indice}</span>
         <span className={rowSub}>{formatDateTime(t.created_at)}</span>
         <span className="ml-auto">
           <span className={pillClass(ESITO_VARIANT[t.esito] || 'neutral')}>
@@ -118,7 +100,6 @@ function TurnoBlocco({ turno, indice }) {
           </span>
         </span>
       </div>
-
       <div className="space-y-3 px-3 py-3">
         {t.testo_cliente ? (
           <div>
@@ -126,7 +107,6 @@ function TurnoBlocco({ turno, indice }) {
             <p className="mt-1 whitespace-pre-wrap text-sm text-uc-ink">{t.testo_cliente}</p>
           </div>
         ) : null}
-
         <div>
           <p className={sectionLabel}>Risposta AI</p>
           {t.testo_risposta ? (
@@ -137,20 +117,16 @@ function TurnoBlocco({ turno, indice }) {
             <p className="mt-1 text-xs italic text-uc-muted">nessuna risposta registrata</p>
           )}
         </div>
-
         {citazioni.length > 0 ? (
           <div>
-            <p className={sectionLabel}>Citazioni KB ({citazioni.length})</p>
+            <p className={sectionLabel}>{'Citazioni KB (' + citazioni.length + ')'}</p>
             <div className="mt-1 space-y-1">
               {citazioni.map((c, k) => (
-                <p key={k} className="rounded-lg bg-[rgba(46,111,242,0.06)] px-3 py-1.5 text-xs italic text-uc-ink">
-                  {c}
-                </p>
+                <p key={k} className="rounded-lg bg-[rgba(46,111,242,0.06)] px-3 py-1.5 text-xs italic text-uc-ink">{c}</p>
               ))}
             </div>
           </div>
         ) : null}
-
         {t.motivo_handoff ? (
           <div>
             <p className={sectionLabel}>Motivo handoff</p>
@@ -159,7 +135,6 @@ function TurnoBlocco({ turno, indice }) {
             </p>
           </div>
         ) : null}
-
         <p className={rowSub}>{meta}</p>
       </div>
     </div>
@@ -170,27 +145,24 @@ function ThreadDrawer({ gruppo, onClose }) {
   if (!gruppo) return null
 
   const canale3 = isCanale3(gruppo.canale)
-  // In ordine cronologico: si legge la conversazione, non il log.
-  const turni = [].concat(gruppo.turni).reverse()
+  const turni   = [].concat(gruppo.turni).reverse()
 
   const hrefLink = canale3
     ? 'https://wa.me/' + soloCifre(gruppo.contact_id)
     : 'https://app.gohighlevel.com/v2/location/' + GHL_LOCATION_ID + '/contacts/detail/' + (gruppo.contact_id || '')
 
-  const etichettaLink = canale3 ? 'Apri chat WhatsApp' : 'Apri in GHL'
-  const classeLink = btnPrimary + ' block w-full text-center'
+  const etichettaLink    = canale3 ? 'Apri chat WhatsApp' : 'Apri in GHL'
+  const classeLink       = btnPrimary + ' block w-full text-center'
   const classeIntestazione = rowSub + ' mt-0.5'
 
-  const nMessaggi = gruppo.turni.length
+  const nMessaggi      = gruppo.turni.length
   const parolaMessaggi = nMessaggi === 1 ? 'messaggio' : 'messaggi'
-  const nomeCanale = canale3 ? 'Canale 3' : 'GHL'
-  const sottotitolo =
-    nMessaggi + ' ' + parolaMessaggi + ' · ' + nomeCanale + ' · ' + formatDateTime(gruppo.ultimoAt)
+  const nomeCanale     = canale3 ? 'Canale 3' : 'GHL'
+  const sottotitolo    = nMessaggi + ' ' + parolaMessaggi + ' · ' + nomeCanale + ' · ' + formatDateTime(gruppo.ultimoAt)
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-
       <div className="relative z-10 flex h-full w-full max-w-lg flex-col bg-white shadow-2xl">
         <div className="flex items-start justify-between border-b border-uc-border px-6 py-4">
           <div className="min-w-0">
@@ -199,11 +171,14 @@ function ThreadDrawer({ gruppo, onClose }) {
             </p>
             <p className={classeIntestazione}>{sottotitolo}</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-2 text-uc-muted hover:bg-uc-canvas hover:text-uc-ink">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-2 text-uc-muted hover:bg-uc-canvas hover:text-uc-ink"
+          >
             ✕
           </button>
         </div>
-
         <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-lg bg-uc-canvas px-4 py-3">
@@ -215,12 +190,10 @@ function ThreadDrawer({ gruppo, onClose }) {
               <p className="mt-1 text-xs text-uc-ink">{gruppo.servizio || '—'}</p>
             </div>
           </div>
-
           {turni.map((t, i) => (
             <TurnoBlocco key={t.id || i} turno={t} indice={i + 1} />
           ))}
         </div>
-
         <div className="border-t border-uc-border px-6 py-4">
           <a href={hrefLink} target="_blank" rel="noopener noreferrer" className={classeLink}>{etichettaLink}</a>
         </div>
@@ -229,9 +202,47 @@ function ThreadDrawer({ gruppo, onClose }) {
   )
 }
 
+// ── Card mobile per un gruppo (sostituisce la riga tabella su schermi piccoli) ──
+function CardGruppo({ gruppo, mostraCanale, onSelect }) {
+  const g = gruppo
+  return (
+    <div
+      onClick={onSelect}
+      className="cursor-pointer rounded-xl border border-uc-border bg-white p-3 transition hover:bg-uc-canvas active:bg-uc-canvas"
+    >
+      <div className="mb-1.5 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          {g.nome ? (
+            <span className="text-sm font-semibold text-uc-ink">{g.nome}</span>
+          ) : (
+            <span className="font-mono text-xs text-uc-ink">{shortId(g.contact_id)}</span>
+          )}
+        </div>
+        <span className={pillClass(ESITO_VARIANT[g.esito] || 'neutral') + ' shrink-0'}>
+          {esitoLabel(g.esito)}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-xs text-uc-muted">
+        <span>{g.servizio || '—'}</span>
+        <span>·</span>
+        <span>{g.turni.length + (g.turni.length === 1 ? ' turno' : ' turni')}</span>
+        {mostraCanale && (
+          <>
+            <span>·</span>
+            <span>{isCanale3(g.canale) ? 'C3' : 'GHL'}</span>
+          </>
+        )}
+        <span>·</span>
+        <span>{formatDateTime(g.ultimoAt)}</span>
+      </div>
+    </div>
+  )
+}
+
+// ── Riga tabella desktop (invariata da v2.2) ──
 function RigaGruppo({ gruppo, mostraCanale, onSelect }) {
   const g = gruppo
-  const classeData = rowSub + ' py-2 pr-3 whitespace-nowrap'
+  const classeData   = rowSub + ' py-2 pr-3 whitespace-nowrap'
   const classeCanale = rowSub + ' ml-1.5'
 
   return (
@@ -260,14 +271,14 @@ function RigaGruppo({ gruppo, mostraCanale, onSelect }) {
 }
 
 export default function SessionsPanel({ canale = null, title }) {
-  const [rows, setRows] = useState([])
-  const [nomi, setNomi] = useState({})
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [dateFilter, setDateFilter] = useState('')
+  const [rows, setRows]               = useState([])
+  const [nomi, setNomi]               = useState({})
+  const [loading, setLoading]         = useState(true)
+  const [error, setError]             = useState(null)
+  const [dateFilter, setDateFilter]   = useState('')
   const [serviceFilter, setServiceFilter] = useState('')
-  const [espanso, setEspanso] = useState(false)
-  const [selected, setSelected] = useState(null)
+  const [espanso, setEspanso]         = useState(false)
+  const [selected, setSelected]       = useState(null)
 
   const load = useCallback(async () => {
     if (!supabase) {
@@ -275,7 +286,6 @@ export default function SessionsPanel({ canale = null, title }) {
       setLoading(false)
       return
     }
-
     setLoading(true)
     setError(null)
 
@@ -285,7 +295,6 @@ export default function SessionsPanel({ canale = null, title }) {
       .order('created_at', { ascending: false })
       .limit(RIGHE_MAX)
 
-    // I record precedenti alla v2.30 non hanno canale: sono tutti GHL.
     if (canale === 'whatsapp_operativo') {
       query = query.eq('canale', 'whatsapp_operativo')
     } else if (canale === 'ghl') {
@@ -294,7 +303,7 @@ export default function SessionsPanel({ canale = null, title }) {
 
     if (dateFilter) {
       const inizio = new Date(dateFilter + 'T00:00:00').toISOString()
-      const fine = new Date(dateFilter + 'T23:59:59').toISOString()
+      const fine   = new Date(dateFilter + 'T23:59:59').toISOString()
       query = query.gte('created_at', inizio).lte('created_at', fine)
     }
 
@@ -314,8 +323,6 @@ export default function SessionsPanel({ canale = null, title }) {
     setRows(righe)
     setLoading(false)
 
-    // Nomi: query separata e non bloccante. Se contacts ha uno schema diverso
-    // da quello atteso, restiamo agli id senza rompere nulla.
     const ids = []
     for (const r of righe) {
       if (r.contact_id && ids.indexOf(r.contact_id) === -1) ids.push(r.contact_id)
@@ -337,25 +344,18 @@ export default function SessionsPanel({ canale = null, title }) {
       }
       setNomi(mappa)
     } catch {
-      /* nomi non disponibili — si mostra l'id */
+      /* nomi non disponibili */
     }
   }, [canale, dateFilter, serviceFilter])
 
-  useEffect(() => {
-    load()
-  }, [load])
+  useEffect(() => { load() }, [load])
 
   const servizi = useMemo(() => {
     const set = new Set()
-    for (const r of rows) {
-      if (r.servizio) set.add(r.servizio)
-    }
+    for (const r of rows) { if (r.servizio) set.add(r.servizio) }
     return Array.from(set).sort()
   }, [rows])
 
-  // Raggruppamento: rows arriva gia' in ordine decrescente, quindi la prima
-  // occorrenza di ogni contatto e' il suo turno piu' recente e l'ordine di
-  // inserimento nella Map e' gia' l'ordine giusto dei gruppi.
   const gruppi = useMemo(() => {
     const mappa = new Map()
     for (const r of rows) {
@@ -363,39 +363,35 @@ export default function SessionsPanel({ canale = null, title }) {
       if (!mappa.has(key)) mappa.set(key, [])
       mappa.get(key).push(r)
     }
-
     const out = []
     for (const [contact_id, turni] of mappa.entries()) {
       const ultimo = turni[0]
-      let canaleGruppo = null
+      let canaleGruppo  = null
       let servizioGruppo = null
       for (const t of turni) {
-        if (!canaleGruppo && t.canale) canaleGruppo = t.canale
+        if (!canaleGruppo && t.canale)   canaleGruppo   = t.canale
         if (!servizioGruppo && t.servizio) servizioGruppo = t.servizio
       }
       if (!servizioGruppo) {
         for (const t of turni) {
-          if (t.intent) {
-            servizioGruppo = t.intent
-            break
-          }
+          if (t.intent) { servizioGruppo = t.intent; break }
         }
       }
       out.push({
         contact_id,
         turni,
-        nome: nomi[contact_id] || null,
+        nome:     nomi[contact_id] || null,
         ultimoAt: ultimo.created_at,
-        esito: ultimo.esito,
-        canale: canaleGruppo,
+        esito:    ultimo.esito,
+        canale:   canaleGruppo,
         servizio: servizioGruppo,
       })
     }
     return out
   }, [rows, nomi])
 
-  const visibili = espanso ? gruppi : gruppi.slice(0, GRUPPI_DEFAULT)
-  const classeInput = inputBase + ' w-auto'
+  const visibili       = espanso ? gruppi : gruppi.slice(0, GRUPPI_DEFAULT)
+  const classeInput    = inputBase + ' w-full sm:w-auto'
   const etichettaEspandi = espanso
     ? 'Mostra solo i primi ' + GRUPPI_DEFAULT
     : 'Mostra tutti i ' + gruppi.length + ' contatti'
@@ -406,7 +402,7 @@ export default function SessionsPanel({ canale = null, title }) {
         label="Sessioni AI"
         title={title || 'Conversazioni per cliente'}
         action={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             <input
               type="date"
               value={dateFilter}
@@ -420,9 +416,7 @@ export default function SessionsPanel({ canale = null, title }) {
             >
               <option value="">Tutti i servizi</option>
               {servizi.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
+                <option key={s} value={s}>{s}</option>
               ))}
             </select>
           </div>
@@ -436,7 +430,20 @@ export default function SessionsPanel({ canale = null, title }) {
           <EmptyState message="Nessuna sessione trovata" />
         ) : (
           <>
-            <div className="overflow-x-auto">
+            {/* ── Vista mobile: card verticali ── */}
+            <div className="flex flex-col gap-2 sm:hidden">
+              {visibili.map((g) => (
+                <CardGruppo
+                  key={g.contact_id}
+                  gruppo={g}
+                  mostraCanale={!canale}
+                  onSelect={() => setSelected(g)}
+                />
+              ))}
+            </div>
+
+            {/* ── Vista desktop: tabella (invariata) ── */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-uc-border text-[10px] uppercase tracking-wide text-uc-muted">
