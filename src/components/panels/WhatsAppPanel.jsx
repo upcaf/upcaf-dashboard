@@ -1,11 +1,34 @@
 // src/components/panels/WhatsAppPanel.jsx
 // Canale 3 — Pannello messaggi WhatsApp operativo
-// Versione: 1.0 — 27 luglio 2026
+// Versione: 1.1 — 28 luglio 2026
+//
+// v1.1: selettore motivo_correzione. Compare SOLO se l'operatore modifica la
+// bozza prima di inviare: bozza intatta = nessuna domanda, invio in un click.
+// Il valore viaggia a POST /openwa/send, che dalla v2.31 lo accetta e lo gira
+// a updateWhatsappPending(). È il campo che alimenta il pannello Correzioni AI.
+//
+// Nota sullo stato: il frontend manda sempre e solo testo_finale.
+// La distinzione inviato / modificato_e_inviato la calcola supabase.js v1.6
+// confrontando risposta_ai con testo_finale_inviato — qui non si duplica.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Card, EmptyState, ErrorBanner, LoadingState, formatDateTime } from '../ui'
 
 const CANALE3_URL = 'https://gateway-production-4696.up.railway.app'
+
+// Metti false per rendere il motivo facoltativo (invio sempre abilitato).
+const MOTIVO_OBBLIGATORIO = true
+
+// Tassonomia applicativa — allineata a CorrectionsPanel.jsx.
+// Nessun check constraint a DB: si aggiusta senza migrazioni.
+const MOTIVI = [
+  { key: 'dato_sbagliato',       label: 'Dato sbagliato',   hint: 'Il numero era errato' },
+  { key: 'dato_superato',        label: 'Dato superato',    hint: 'La KB era vecchia' },
+  { key: 'mancava_info',         label: 'Mancava info',     hint: 'Risposta incompleta' },
+  { key: 'promessa_impossibile', label: 'Promessa impossibile', hint: 'Il sistema non può onorarla' },
+  { key: 'troppo_lungo',         label: 'Troppo lungo',     hint: 'Stile WhatsApp' },
+  { key: 'tono',                 label: 'Tono',             hint: 'Forma, non contenuto' },
+]
 
 async function fetchPending() {
   const res = await fetch(`${CANALE3_URL}/wa/pending`)
@@ -14,13 +37,20 @@ async function fetchPending() {
   return data.pending || []
 }
 
-async function sendMessage({ pending_id, numero, testo_finale }) {
+async function sendMessage({ pending_id, numero, testo_finale, motivo_correzione }) {
   const res = await fetch(`${CANALE3_URL}/openwa/send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pending_id, numero, testo_finale }),
+    body: JSON.stringify({ pending_id, numero, testo_finale, motivo_correzione }),
   })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) {
+    let dettaglio = `HTTP ${res.status}`
+    try {
+      const body = await res.json()
+      if (body?.error) dettaglio = body.error
+    } catch { /* risposta non JSON — resta il codice */ }
+    throw new Error(dettaglio)
+  }
   return res.json()
 }
 
@@ -35,7 +65,11 @@ async function rejectMessage(pending_id) {
 }
 
 function WhatsAppCard({ item, onSent, onRejected }) {
-  const [testo, setTesto] = useState(item.risposta_ai || '')
+  const bozzaOriginale = item.risposta_ai || ''
+  const senzaBozza = !bozzaOriginale.trim()
+
+  const [testo, setTesto] = useState(bozzaOriginale)
+  const [motivo, setMotivo] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
@@ -44,12 +78,28 @@ function WhatsAppCard({ item, onSent, onRejected }) {
   )
   const urgente = minutiAttesa >= 10
 
+  // Confronto sul testo normalizzato: uno spazio finale non è una correzione.
+  const modificato = useMemo(
+    () => !senzaBozza && testo.trim() !== bozzaOriginale.trim(),
+    [testo, bozzaOriginale, senzaBozza]
+  )
+
+  // Il motivo si chiede solo se c'era una bozza E l'hai cambiata.
+  // Senza bozza (handoff attivo) non c'è nulla da correggere: stai scrivendo tu.
+  const serveMotivo = MOTIVO_OBBLIGATORIO && modificato
+  const bloccatoDalMotivo = serveMotivo && !motivo
+
   async function handleSend() {
-    if (!testo.trim()) return
+    if (!testo.trim() || bloccatoDalMotivo) return
     setLoading(true)
     setError(null)
     try {
-      await sendMessage({ pending_id: item.id, numero: item.numero, testo_finale: testo.trim() })
+      await sendMessage({
+        pending_id: item.id,
+        numero: item.numero,
+        testo_finale: testo.trim(),
+        motivo_correzione: modificato ? motivo : null,
+      })
       onSent(item.id)
     } catch (err) {
       setError('Errore invio: ' + err.message)
@@ -105,7 +155,23 @@ function WhatsAppCard({ item, onSent, onRejected }) {
         </div>
       )}
 
-      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Bozza di risposta</div>
+      {senzaBozza && (
+        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Nessuna bozza AI per questo messaggio — la pipeline è stata saltata
+          (handoff aperto). Scrivi tu la risposta.
+        </div>
+      )}
+
+      <div className="mb-1 flex items-center gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          {senzaBozza ? 'Risposta' : 'Bozza di risposta'}
+        </span>
+        {modificato && (
+          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-800">
+            modificata
+          </span>
+        )}
+      </div>
       <textarea
         value={testo}
         onChange={e => setTesto(e.target.value)}
@@ -115,6 +181,37 @@ function WhatsAppCard({ item, onSent, onRejected }) {
         placeholder="Scrivi o modifica la risposta..."
       />
 
+      {/* Selettore motivo — compare solo su bozza modificata */}
+      {modificato && (
+        <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+          <div className="mb-2 text-xs text-blue-900">
+            Hai corretto la bozza. <span className="font-medium">Perché?</span>
+            {MOTIVO_OBBLIGATORIO && <span className="text-blue-700"> (serve per rivedere i prompt)</span>}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {MOTIVI.map(({ key, label, hint }) => {
+              const attivo = motivo === key
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  title={hint}
+                  disabled={loading}
+                  onClick={() => setMotivo(attivo ? null : key)}
+                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition disabled:opacity-50 ${
+                    attivo
+                      ? 'border-blue-600 bg-blue-600 text-white'
+                      : 'border-blue-200 bg-white text-blue-800 hover:bg-blue-100'
+                  }`}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
       )}
@@ -122,10 +219,15 @@ function WhatsAppCard({ item, onSent, onRejected }) {
       <div className="mt-3 flex gap-2">
         <button
           onClick={handleSend}
-          disabled={loading || !testo.trim()}
+          disabled={loading || !testo.trim() || bloccatoDalMotivo}
           className="flex-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+          title={bloccatoDalMotivo ? 'Scegli prima il motivo della correzione' : undefined}
         >
-          {loading ? 'Invio...' : '✓ Invia su WhatsApp'}
+          {loading
+            ? 'Invio...'
+            : bloccatoDalMotivo
+              ? 'Scegli il motivo per inviare'
+              : '✓ Invia su WhatsApp'}
         </button>
         <button
           onClick={handleReject}
