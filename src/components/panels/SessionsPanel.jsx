@@ -1,12 +1,18 @@
 // src/components/panels/SessionsPanel.jsx
 // Sessioni AI — raggruppate per contatto
-// Versione: 2.0 — 28 luglio 2026
+// Versione: 2.1 — 28 luglio 2026
 //
-// v2.0: una riga per CLIENTE, non per messaggio. Il pannello ora si usa in tre
-// contesti diversi tramite la prop `canale`:
-//   <SessionsPanel />                          → tutti i canali
-//   <SessionsPanel canale="ghl" />             → whatsapp_inbound + record legacy (canale NULL)
-//   <SessionsPanel canale="whatsapp_operativo" /> → Canale 3
+// v2.1: rimossa la regex literal /\D/g dal link wa.me. Il parser di Vite 8
+// (rolldown/oxc) non riesce a distinguere una regex da una divisione quando
+// compare dentro un template literal dentro un attributo JSX, e fa fallire la
+// build con "Unexpected token". Sostituita con soloCifre(), che filtra i
+// caratteri uno a uno: nessuna barra nel sorgente, nessuna ambiguità.
+//
+// v2.0: una riga per CLIENTE, non per messaggio. Il pannello si usa in tre
+// contesti tramite la prop `canale`:
+//   <SessionsPanel />                            → tutti i canali
+//   <SessionsPanel canale="ghl" />               → whatsapp_inbound + legacy (NULL)
+//   <SessionsPanel canale="whatsapp_operativo" />→ Canale 3
 //
 // Lo stato mostrato è `session_logs.esito` per ENTRAMBI i canali (decisione
 // del 28 luglio: GHL e Canale 3 uguali). Conseguenza da tenere a mente:
@@ -66,6 +72,14 @@ function isCanale3(canale) {
   return canale === 'whatsapp_operativo'
 }
 
+// Estrae le sole cifre SENZA regex literal: vedi nota di versione in testa.
+function soloCifre(valore) {
+  return String(valore || '')
+    .split('')
+    .filter((c) => c >= '0' && c <= '9')
+    .join('')
+}
+
 // Il nome cliente non vive in session_logs. Lo cerchiamo in `contacts` senza
 // dare per scontato il nome della colonna: select('*') non può fallire per
 // colonna inesistente, e qui sotto proviamo i nomi plausibili in ordine.
@@ -85,6 +99,13 @@ function ThreadDrawer({ gruppo, onClose }) {
   const canale3 = isCanale3(gruppo.canale)
   // In ordine cronologico: si legge la conversazione, non il log.
   const turni = [...gruppo.turni].reverse()
+
+  const linkWhatsApp = 'https://wa.me/' + soloCifre(gruppo.contact_id)
+  const linkGHL =
+    'https://app.gohighlevel.com/v2/location/' +
+    GHL_LOCATION_ID +
+    '/contacts/detail/' +
+    (gruppo.contact_id || '')
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -198,25 +219,14 @@ function ThreadDrawer({ gruppo, onClose }) {
         </div>
 
         <div className="border-t border-uc-border px-6 py-4">
-          {canale3 ? (
-            
-              href={`https://wa.me/${String(gruppo.contact_id || '').replace(/\D/g, '')}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`${btnPrimary} block w-full text-center`}
-            >
-              Apri chat WhatsApp →
-            </a>
-          ) : (
-            
-              href={`https://app.gohighlevel.com/v2/location/${GHL_LOCATION_ID}/contacts/detail/${gruppo.contact_id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`${btnPrimary} block w-full text-center`}
-            >
-              Apri in GHL →
-            </a>
-          )}
+          
+            href={canale3 ? linkWhatsApp : linkGHL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`${btnPrimary} block w-full text-center`}
+          >
+            {canale3 ? 'Apri chat WhatsApp →' : 'Apri in GHL →'}
+          </a>
         </div>
       </div>
     </div>
@@ -279,7 +289,7 @@ export default function SessionsPanel({ canale = null, title }) {
     setLoading(false)
 
     // Nomi: query separata e non bloccante. Se `contacts` ha uno schema
-    // diverso da quello che ci aspettiamo, restiamo agli id senza rompere nulla.
+    // diverso da quello atteso, restiamo agli id senza rompere nulla.
     const ids = [...new Set(righe.map((r) => r.contact_id).filter(Boolean))]
     if (ids.length === 0) return
 
@@ -327,13 +337,13 @@ export default function SessionsPanel({ canale = null, title }) {
       return {
         contact_id,
         turni,
-        nome:      nomi[contact_id] || null,
-        ultimoAt:  ultimo.created_at,
-        esito:     ultimo.esito,
-        canale:    turni.find((t) => t.canale)?.canale || null,
-        servizio:  turni.find((t) => t.servizio)?.servizio
-                   || turni.find((t) => t.intent)?.intent
-                   || null,
+        nome:     nomi[contact_id] || null,
+        ultimoAt: ultimo.created_at,
+        esito:    ultimo.esito,
+        canale:   turni.find((t) => t.canale)?.canale || null,
+        servizio: turni.find((t) => t.servizio)?.servizio
+                  || turni.find((t) => t.intent)?.intent
+                  || null,
       }
     })
   }, [rows, nomi])
