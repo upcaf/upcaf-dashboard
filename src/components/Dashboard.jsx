@@ -1,13 +1,13 @@
 // src/components/Dashboard.jsx
-// v3.1 — mobile-friendly
+// v3.2 — 29 luglio 2026
 //
-// Su mobile (< 768px):
-//   - Sidebar nascosta
-//   - Bottom tab bar a 4 voci: WA Operativo · Handoff · Operativo · ···
-//   - "···" apre un drawer con i tab secondari (Marketing, Normative, KB, Sistema)
-//   - Header semplificato: solo titolo + badge notifiche
+// Unica modifica rispetto alla v3.1:
+// ViewGHL() — rimosso il banner "workflow in bozza", aggiunto
+// <WhatsAppPanel canale="ghl" /> come primo pannello.
+// Il Canale 2 GHL è ora in modalità human-in-the-loop identica al Canale 3:
+// le bozze AI appaiono qui, l'operatore approva/modifica, l'invio va via GHL API.
 //
-// Su desktop: layout identico alla v3.0, nessuna regressione.
+// Tutto il resto — layout, nav, stats, mobile, drawer — è identico alla v3.1.
 //
 // Regola Vite 8: zero template literal nel JSX — solo concatenazioni.
 
@@ -36,8 +36,7 @@ const NAV = [
   { id: 'sistema',    label: 'Sistema',          icon: 'ti-activity'         },
 ]
 
-// Tab visibili nella bottom bar mobile — gli altri vanno nel drawer "···"
-const MOBILE_PRIMARY = ['whatsapp', 'operativo', 'ghl']
+const MOBILE_PRIMARY   = ['whatsapp', 'operativo', 'ghl']
 const MOBILE_SECONDARY = ['marketing', 'normative', 'kb', 'sistema']
 
 const SUBTITLES = {
@@ -71,7 +70,8 @@ function useDashboardStats() {
         handoffC3Res,
         normativeRes,
         approvalsRes,
-        waPendingRes,
+        waPendingC3Res,
+        waPendingGhlRes,
       ] = await Promise.all([
         conta('session_logs').gte('created_at', start).lte('created_at', end),
         conta('session_logs')
@@ -90,18 +90,25 @@ function useDashboardStats() {
           .eq('canale', 'whatsapp_operativo'),
         conta('normative_updates').or('letto.is.null,letto.eq.false'),
         conta('pending_approvals').eq('stato', 'in_attesa'),
-        conta('whatsapp_pending').eq('stato', 'in_attesa'),
+        conta('whatsapp_pending')
+          .eq('stato', 'in_attesa')
+          .eq('canale', 'whatsapp_operativo'),
+        conta('whatsapp_pending')
+          .eq('stato', 'in_attesa')
+          .eq('canale', 'whatsapp_inbound'),
       ])
 
       if (sessioniRes.error) throw sessioniRes.error
       if (risoltiRes.error)  throw risoltiRes.error
 
-      const risolti     = risoltiRes.count  ?? 0
-      const handoffOggi = handoffOggiRes.count ?? 0
-      const handoffGhl  = handoffGhlRes.count  ?? 0
-      const handoffC3   = handoffC3Res.count   ?? 0
-      const decise      = risolti + handoffOggi
-      const qgApprovati = decise > 0 ? Math.round((risolti / decise) * 100) : null
+      const risolti      = risoltiRes.count   ?? 0
+      const handoffOggi  = handoffOggiRes.count ?? 0
+      const handoffGhl   = handoffGhlRes.count  ?? 0
+      const handoffC3    = handoffC3Res.count   ?? 0
+      const waPendingC3  = waPendingC3Res.count ?? 0
+      const waPendingGhl = waPendingGhlRes.count ?? 0
+      const decise       = risolti + handoffOggi
+      const qgApprovati  = decise > 0 ? Math.round((risolti / decise) * 100) : null
 
       setStats({
         sessioniOggi:    sessioniRes.count ?? 0,
@@ -113,7 +120,9 @@ function useDashboardStats() {
         qgApprovati,
         novitaNormative: normativeRes.count  ?? 0,
         daApprovare:     approvalsRes.count  ?? 0,
-        waPending:       waPendingRes.count  ?? 0,
+        waPendingC3,
+        waPendingGhl,
+        waPending:       waPendingC3 + waPendingGhl,
       })
     } catch {
       /* mantieni i valori precedenti */
@@ -130,8 +139,8 @@ function useDashboardStats() {
 }
 
 export default function Dashboard({ onLogout }) {
-  const [active, setActive]           = useState('whatsapp')
-  const [drawerOpen, setDrawerOpen]   = useState(false)
+  const [active, setActive]         = useState('whatsapp')
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const stats = useDashboardStats()
 
   const today = new Date().toLocaleDateString('it-IT', {
@@ -142,18 +151,19 @@ export default function Dashboard({ onLogout }) {
   const handoffC3        = stats.handoffC3       ?? 0
   const normativeCount   = stats.novitaNormative ?? 0
   const daApprovareCount = stats.daApprovare     ?? 0
-  const waPendingCount   = stats.waPending       ?? 0
-  const totalAlerts      = handoffGhl + handoffC3 + daApprovareCount + waPendingCount
+  const waPendingC3      = stats.waPendingC3     ?? 0
+  const waPendingGhl     = stats.waPendingGhl    ?? 0
+  const totalAlerts      = handoffGhl + handoffC3 + daApprovareCount + waPendingC3 + waPendingGhl
 
   const badgeFor = (id) => {
     if (id === 'operativo' && totalAlerts > 0)
       return { n: totalAlerts, cls: 'bg-uc-amber' }
     if (id === 'whatsapp') {
-      const n = waPendingCount + handoffC3
+      const n = waPendingC3 + handoffC3
       return n > 0 ? { n, cls: 'bg-green-500' } : null
     }
     if (id === 'ghl') {
-      const n = daApprovareCount + handoffGhl
+      const n = waPendingGhl + daApprovareCount + handoffGhl
       return n > 0 ? { n, cls: 'bg-uc-blue' } : null
     }
     if (id === 'normative' && normativeCount > 0)
@@ -161,7 +171,6 @@ export default function Dashboard({ onLogout }) {
     return null
   }
 
-  // Chiude il drawer secondario e naviga
   function goTo(id) {
     setActive(id)
     setDrawerOpen(false)
@@ -181,7 +190,7 @@ export default function Dashboard({ onLogout }) {
           <div className="text-[15px] font-semibold tracking-tight text-[#f5f5f7]">
             UP CAF <span className="text-uc-blue">AI</span>
           </div>
-          <div className="mt-0.5 text-[10px] text-white/25">Gateway v2.32</div>
+          <div className="mt-0.5 text-[10px] text-white/25">Gateway v2.33</div>
         </div>
 
         <nav className="flex flex-1 flex-col gap-0.5 px-2 py-4" aria-label="Sezioni">
@@ -221,7 +230,7 @@ export default function Dashboard({ onLogout }) {
             <span className="h-1.5 w-1.5 rounded-full bg-uc-green" aria-hidden="true" />
             <span className="text-[10px] font-medium text-uc-green">Live</span>
           </div>
-          <span className="text-[10px] text-white/20">v3.1</span>
+          <span className="text-[10px] text-white/20">v3.2</span>
         </div>
       </aside>
 
@@ -277,7 +286,7 @@ export default function Dashboard({ onLogout }) {
           </div>
         </header>
 
-        {/* Main scroll area — su mobile tiene spazio per la bottom bar */}
+        {/* Main scroll area */}
         <main
           className="flex-1 overflow-y-auto pb-[72px] md:pb-0"
           aria-label={'Sezione ' + active}
@@ -325,7 +334,7 @@ export default function Dashboard({ onLogout }) {
           )
         })}
 
-        {/* Bottone ··· — apre drawer secondario */}
+        {/* Bottone ··· */}
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
@@ -402,15 +411,14 @@ function ViewWhatsApp() {
   )
 }
 
+// v3.2 — WhatsAppPanel canale="ghl" al posto del banner "workflow in bozza"
 function ViewGHL() {
   return (
     <div className="flex flex-col gap-3 p-3 pb-5 sm:p-4 sm:px-5">
-      <div className="rounded-xl border border-uc-border bg-white px-4 py-3 text-[11px] text-uc-muted">
-        Il workflow GHL è in bozza dal 25 luglio. I clienti che scrivono qui vanno gestiti a mano in GoHighLevel.
-      </div>
+      <WhatsAppPanel canale="ghl" />
       <ApprovalsPanel />
-      <HandoffsPanel canale="ghl" title="Handoff aperti — GHL" />
-      <SessionsPanel canale="ghl" title="Conversazioni GHL" />
+      <HandoffsPanel canale="whatsapp_inbound" title="Handoff aperti — GHL" />
+      <SessionsPanel canale="whatsapp_inbound" title="Conversazioni GHL" />
     </div>
   )
 }
@@ -434,17 +442,19 @@ function ViewSistema() {
 
 // ─── HEADER STATS ─────────────────────────────────────────────────────────────
 function HeaderStats({ stats }) {
-  const bozzeWa   = stats.waPending      ?? 0
+  const bozzeC3   = stats.waPendingC3    ?? 0
+  const bozzeGhl  = stats.waPendingGhl   ?? 0
+  const bozzeTot  = bozzeC3 + bozzeGhl
   const handoff   = stats.handoffAperti  ?? 0
   const normative = stats.novitaNormative ?? 0
   const qg        = stats.qgApprovati
 
   const items = [
     {
-      val:   bozzeWa,
+      val:   bozzeTot,
       label: 'Bozze in attesa',
-      sub:   'Canale 3 — da approvare',
-      color: bozzeWa > 0 ? 'text-red-500' : 'text-uc-ink',
+      sub:   bozzeC3 + ' Canale 3 · ' + bozzeGhl + ' GHL',
+      color: bozzeTot > 0 ? 'text-red-500' : 'text-uc-ink',
     },
     {
       val:   handoff,
