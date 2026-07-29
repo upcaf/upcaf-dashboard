@@ -1,21 +1,28 @@
 // src/components/panels/WhatsAppPanel.jsx
-// Canale 3 — Pannello messaggi WhatsApp operativo
-// Versione: 1.2 — mobile-friendly
+// Pannello bozze in attesa di approvazione — Canale 3 e Canale 2 GHL
+// Versione: 1.3 — 29 luglio 2026
 //
-// v1.2: ottimizzazione mobile.
-//   - Bottoni Invia / Rifiuta a tutta larghezza, impilati verticalmente su schermi stretti
-//   - Textarea con rows={5} per più spazio di lettura/modifica su telefono
-//   - Selettore motivo a griglia 2 colonne (si legge meglio con il pollice)
-//   - Badge urgenza più visibile
-//   - Header card semplificato su mobile (canale + nome su righe separate)
-//   - Nessuna regressione sul comportamento: tutta la logica v1.1 è invariata
+// v1.3 — Canale 2 GHL human-in-the-loop:
+//   Prop "canale" che parametrizza tutto il comportamento:
+//     canale="operativo" (default) → Canale 3, comportamento identico alla v1.2
+//     canale="ghl"                 → Canale 2 GHL, endpoint /ghl/send e /ghl/reject,
+//                                    /wa/pending?canale=whatsapp_inbound,
+//                                    label badge "GHL / META WA"
+//   Il campo contact_id in ogni record pending è l'ID GHL quando canale="ghl",
+//   il numero WhatsApp quando canale="operativo". L'endpoint /ghl/send si aspetta
+//   contact_id (non numero) per chiamare la GHL Conversations API.
+//   Tutto il resto — motivo correzione, selettore, logica modificato/invariato,
+//   mobile layout — è invariato dalla v1.2.
+//
+// v1.2: ottimizzazione mobile (bottoni full-width, textarea 5 righe,
+//       griglia motivi 2 colonne, header verticale su small).
 //
 // Regola Vite 8: zero template literal nel JSX — solo concatenazioni.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Card, EmptyState, ErrorBanner, LoadingState, formatDateTime } from '../ui'
 
-const CANALE3_URL = 'https://gateway-production-4696.up.railway.app'
+const GATEWAY_URL = 'https://gateway-production-4696.up.railway.app'
 
 const MOTIVO_OBBLIGATORIO = true
 
@@ -28,32 +35,78 @@ const MOTIVI = [
   { key: 'tono',                 label: 'Tono',                 hint: 'Forma, non contenuto' },
 ]
 
-async function fetchPending() {
-  const res = await fetch(CANALE3_URL + '/wa/pending')
+// ── Funzioni API parametriche ─────────────────────────────────────────────
+
+function buildFetchUrl(canale) {
+  if (canale === 'ghl') {
+    return GATEWAY_URL + '/wa/pending?canale=whatsapp_inbound'
+  }
+  return GATEWAY_URL + '/wa/pending?canale=whatsapp_operativo'
+}
+
+async function fetchPending(canale) {
+  const res = await fetch(buildFetchUrl(canale))
   if (!res.ok) throw new Error('HTTP ' + res.status)
   const data = await res.json()
   return data.pending || []
 }
 
-async function sendMessage({ pending_id, numero, testo_finale, motivo_correzione }) {
-  const res = await fetch(CANALE3_URL + '/openwa/send', {
+/**
+ * Invia la bozza approvata.
+ *
+ * Canale 3: POST /openwa/send con { pending_id, numero, testo_finale, motivo_correzione }
+ *   "numero" è il numero WhatsApp — serve a whatsapp-web.js per trovare la chat.
+ *
+ * Canale 2 GHL: POST /ghl/send con { pending_id, contact_id, testo_finale, motivo_correzione }
+ *   "contact_id" è l'ID GHL — serve alla GHL Conversations API.
+ *   Sul record pending il campo "numero" contiene contact_phone (se disponibile)
+ *   o contact_id come fallback. Il campo "contact_id" della tabella è quello che
+ *   serve all'endpoint /ghl/send.
+ */
+async function sendMessage({ canale, pending_id, item, testo_finale, motivo_correzione }) {
+  let endpoint, body
+
+  if (canale === 'ghl') {
+    endpoint = GATEWAY_URL + '/ghl/send'
+    body = {
+      pending_id,
+      contact_id:        item.contact_id,
+      testo_finale,
+      motivo_correzione: motivo_correzione || null,
+    }
+  } else {
+    endpoint = GATEWAY_URL + '/openwa/send'
+    body = {
+      pending_id,
+      numero:            item.numero,
+      testo_finale,
+      motivo_correzione: motivo_correzione || null,
+    }
+  }
+
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pending_id, numero, testo_finale, motivo_correzione }),
+    body: JSON.stringify(body),
   })
+
   if (!res.ok) {
     let dettaglio = 'HTTP ' + res.status
     try {
-      const body = await res.json()
-      if (body?.error) dettaglio = body.error
+      const respBody = await res.json()
+      if (respBody?.error) dettaglio = respBody.error
     } catch { /* risposta non JSON */ }
     throw new Error(dettaglio)
   }
   return res.json()
 }
 
-async function rejectMessage(pending_id) {
-  const res = await fetch(CANALE3_URL + '/wa/reject', {
+async function rejectMessage({ canale, pending_id }) {
+  const endpoint = canale === 'ghl'
+    ? GATEWAY_URL + '/ghl/reject'
+    : GATEWAY_URL + '/wa/reject'
+
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pending_id }),
@@ -62,14 +115,16 @@ async function rejectMessage(pending_id) {
   return res.json()
 }
 
-function WhatsAppCard({ item, onSent, onRejected }) {
-  const bozzaOriginale = item.risposta_ai || ''
-  const senzaBozza = !bozzaOriginale.trim()
+// ── Singola card bozza ────────────────────────────────────────────────────
 
-  const [testo, setTesto]   = useState(bozzaOriginale)
-  const [motivo, setMotivo] = useState(null)
+function WhatsAppCard({ item, canale, onSent, onRejected }) {
+  const bozzaOriginale = item.risposta_ai || ''
+  const senzaBozza     = !bozzaOriginale.trim()
+
+  const [testo, setTesto]     = useState(bozzaOriginale)
+  const [motivo, setMotivo]   = useState(null)
   const [loading, setLoading] = useState(false)
-  const [error, setError]   = useState(null)
+  const [error, setError]     = useState(null)
 
   const minutiAttesa = Math.floor(
     (Date.now() - new Date(item.created_at).getTime()) / 60000
@@ -90,9 +145,10 @@ function WhatsAppCard({ item, onSent, onRejected }) {
     setError(null)
     try {
       await sendMessage({
-        pending_id: item.id,
-        numero: item.numero,
-        testo_finale: testo.trim(),
+        canale,
+        pending_id:        item.id,
+        item,
+        testo_finale:      testo.trim(),
         motivo_correzione: modificato ? motivo : null,
       })
       onSent(item.id)
@@ -107,7 +163,7 @@ function WhatsAppCard({ item, onSent, onRejected }) {
     setLoading(true)
     setError(null)
     try {
-      await rejectMessage(item.id)
+      await rejectMessage({ canale, pending_id: item.id })
       onRejected(item.id)
     } catch (err) {
       setError('Errore rifiuto: ' + err.message)
@@ -119,6 +175,13 @@ function WhatsAppCard({ item, onSent, onRejected }) {
   const cardClass = urgente
     ? 'rounded-xl border border-amber-300 bg-amber-50 p-4'
     : 'rounded-xl border border-slate-200 bg-white p-4'
+
+  const badgeLabel = canale === 'ghl' ? 'GHL / META WA' : 'WA OPERATIVO'
+  const badgeClass = canale === 'ghl'
+    ? 'rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800'
+    : 'rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800'
+
+  const inviaLabel = canale === 'ghl' ? '✓ Invia via GHL' : '✓ Invia su WhatsApp'
 
   return (
     <div className={cardClass}>
@@ -134,12 +197,12 @@ function WhatsAppCard({ item, onSent, onRejected }) {
           <span className="text-sm font-semibold text-slate-800">
             {item.nome_cliente || 'nome non noto'}
           </span>
-          <span className="text-xs text-slate-400">{item.numero || '—'}</span>
+          <span className="text-xs text-slate-400">
+            {canale === 'ghl' ? (item.contact_id || '—') : (item.numero || '—')}
+          </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
-            WA OPERATIVO
-          </span>
+          <span className={badgeClass}>{badgeLabel}</span>
           <span className="text-xs text-slate-400">{formatDateTime(item.created_at)}</span>
         </div>
       </div>
@@ -149,7 +212,9 @@ function WhatsAppCard({ item, onSent, onRejected }) {
         <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
           Il cliente ha scritto
         </div>
-        <p className="whitespace-pre-wrap text-sm text-slate-800">{item.messaggio_ricevuto || '—'}</p>
+        <p className="whitespace-pre-wrap text-sm text-slate-800">
+          {item.messaggio_ricevuto || '—'}
+        </p>
       </div>
 
       {/* ── Sintesi agente ── */}
@@ -238,7 +303,7 @@ function WhatsAppCard({ item, onSent, onRejected }) {
             ? 'Invio in corso...'
             : bloccatoDalMotivo
               ? 'Scegli il motivo per inviare'
-              : '✓ Invia su WhatsApp'}
+              : inviaLabel}
         </button>
         <button
           onClick={handleReject}
@@ -252,16 +317,28 @@ function WhatsAppCard({ item, onSent, onRejected }) {
   )
 }
 
-export default function WhatsAppPanel() {
+// ── Pannello principale ───────────────────────────────────────────────────
+
+/**
+ * WhatsAppPanel — pannello bozze in attesa di approvazione.
+ *
+ * Props:
+ *   canale: "operativo" (default) | "ghl"
+ *     "operativo" → Canale 3, whatsapp-web.js, badge verde "WA OPERATIVO"
+ *     "ghl"       → Canale 2 GHL, GHL API, badge blu "GHL / META WA"
+ */
+export default function WhatsAppPanel({ canale = 'operativo' }) {
   const [items, setItems]       = useState([])
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState(null)
   const [waStatus, setWaStatus] = useState(null)
   const [showQR, setShowQR]     = useState(false)
 
+  const isCanale3 = canale !== 'ghl'
+
   const load = useCallback(async () => {
     try {
-      const data = await fetchPending()
+      const data = await fetchPending(canale)
       setItems(data)
       setError(null)
     } catch (err) {
@@ -269,17 +346,21 @@ export default function WhatsAppPanel() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [canale])
 
   const checkStatus = useCallback(async () => {
+    if (!isCanale3) {
+      setWaStatus(null)
+      return
+    }
     try {
-      const res  = await fetch(CANALE3_URL + '/health')
+      const res  = await fetch(GATEWAY_URL + '/health')
       const data = await res.json()
       setWaStatus(data.wa_canale3 || 'sconosciuto')
     } catch {
       setWaStatus('non raggiungibile')
     }
-  }, [])
+  }, [isCanale3])
 
   useEffect(() => {
     load()
@@ -292,25 +373,44 @@ export default function WhatsAppPanel() {
   function handleSent(id)     { setItems((prev) => prev.filter((i) => i.id !== id)) }
   function handleRejected(id) { setItems((prev) => prev.filter((i) => i.id !== id)) }
 
-  const connesso = waStatus === 'pronto'
+  const connesso    = waStatus === 'pronto'
+  const titoloPannello = canale === 'ghl'
+    ? 'GHL / Meta WhatsApp' + (items.length > 0 ? ' (' + items.length + ')' : '')
+    : 'WhatsApp Operativo'  + (items.length > 0 ? ' (' + items.length + ')' : '')
 
   return (
     <Card
-      title={'WhatsApp Operativo' + (items.length > 0 ? ' (' + items.length + ')' : '')}
+      title={titoloPannello}
       action={
         <div className="flex items-center gap-2">
-          <span className={
-            'rounded-full px-2 py-0.5 text-xs font-medium ' +
-            (connesso ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800')
-          }>
-            {connesso ? '● connesso' : '● disconnesso'}
-          </span>
-          <button
-            onClick={() => setShowQR(!showQR)}
-            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50"
-          >
-            QR
-          </button>
+
+          {/* Status connessione — solo Canale 3 */}
+          {isCanale3 && waStatus && (
+            <span className={
+              'rounded-full px-2 py-0.5 text-xs font-medium ' +
+              (connesso ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800')
+            }>
+              {connesso ? '● connesso' : '● disconnesso'}
+            </span>
+          )}
+
+          {/* Badge GHL — solo Canale 2 */}
+          {!isCanale3 && (
+            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+              ● GHL attivo
+            </span>
+          )}
+
+          {/* QR — solo Canale 3 */}
+          {isCanale3 && (
+            <button
+              onClick={() => setShowQR(!showQR)}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50"
+            >
+              QR
+            </button>
+          )}
+
           <button
             onClick={load}
             className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50"
@@ -322,13 +422,14 @@ export default function WhatsAppPanel() {
     >
       <ErrorBanner message={error} />
 
-      {showQR && (
+      {/* QR scanner — solo Canale 3 */}
+      {isCanale3 && showQR && (
         <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-4 flex flex-col items-center gap-2">
           <p className="text-xs text-slate-500 text-center">
             WhatsApp → Impostazioni → Dispositivi collegati → Collega un dispositivo
           </p>
           <img
-            src={CANALE3_URL + '/wa/qr?t=' + Date.now()}
+            src={GATEWAY_URL + '/wa/qr?t=' + Date.now()}
             alt="QR WhatsApp"
             className="rounded-lg border border-slate-200"
             style={{ width: 220, height: 220 }}
@@ -340,7 +441,8 @@ export default function WhatsAppPanel() {
         </div>
       )}
 
-      {waStatus && !connesso && !showQR && (
+      {/* Avviso disconnessione — solo Canale 3 */}
+      {isCanale3 && waStatus && !connesso && !showQR && (
         <div className="mb-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
           ⚠️ WhatsApp non connesso — clicca <strong>QR</strong> per scansionare.
         </div>
@@ -359,6 +461,7 @@ export default function WhatsAppPanel() {
             <WhatsAppCard
               key={item.id}
               item={item}
+              canale={canale}
               onSent={handleSent}
               onRejected={handleRejected}
             />
