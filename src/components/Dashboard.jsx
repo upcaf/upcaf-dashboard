@@ -1,13 +1,18 @@
 // src/components/Dashboard.jsx
-// v3.2 — 29 luglio 2026
+// v3.3 — 29 luglio 2026
 //
-// Unica modifica rispetto alla v3.1:
-// ViewGHL() — rimosso il banner "workflow in bozza", aggiunto
-// <WhatsAppPanel canale="ghl" /> come primo pannello.
-// Il Canale 2 GHL è ora in modalità human-in-the-loop identica al Canale 3:
-// le bozze AI appaiono qui, l'operatore approva/modifica, l'invio va via GHL API.
+// Unica modifica rispetto alla v3.2:
+// Metrica "Risolte dall'AI" corretta per Canale 3 e GHL.
 //
-// Tutto il resto — layout, nav, stats, mobile, drawer — è identico alla v3.1.
+// Il problema: sul Canale 3 (e GHL human-in-the-loop) nessuna risposta
+// produce esito 'risolto' in session_logs — l'esito è sempre
+// 'in_attesa_operatore', 'handoff' o 'da_approvare'. La metrica era 0% fisso.
+//
+// Fix: query aggiuntiva su whatsapp_pending che conta stato='inviato' oggi
+// (bozze accettate invariate dall'operatore = proxy di accuratezza AI).
+// La card mostra due righe separate:
+//   - Pipeline diretta (GHL QG): risoltiOggi / decise
+//   - Canale 3 + GHL human-in-the-loop: bozzeInviateOggi bozze accettate
 //
 // Regola Vite 8: zero template literal nel JSX — solo concatenazioni.
 
@@ -72,6 +77,7 @@ function useDashboardStats() {
         approvalsRes,
         waPendingC3Res,
         waPendingGhlRes,
+        bozzeInviateRes,
       ] = await Promise.all([
         conta('session_logs').gte('created_at', start).lte('created_at', end),
         conta('session_logs')
@@ -96,19 +102,25 @@ function useDashboardStats() {
         conta('whatsapp_pending')
           .eq('stato', 'in_attesa')
           .eq('canale', 'whatsapp_inbound'),
+        // Bozze accettate invariate oggi (proxy accuratezza AI su C3 + GHL)
+        conta('whatsapp_pending')
+          .eq('stato', 'inviato')
+          .gte('updated_at', start)
+          .lte('updated_at', end),
       ])
 
       if (sessioniRes.error) throw sessioniRes.error
       if (risoltiRes.error)  throw risoltiRes.error
 
-      const risolti      = risoltiRes.count   ?? 0
-      const handoffOggi  = handoffOggiRes.count ?? 0
-      const handoffGhl   = handoffGhlRes.count  ?? 0
-      const handoffC3    = handoffC3Res.count   ?? 0
-      const waPendingC3  = waPendingC3Res.count ?? 0
-      const waPendingGhl = waPendingGhlRes.count ?? 0
-      const decise       = risolti + handoffOggi
-      const qgApprovati  = decise > 0 ? Math.round((risolti / decise) * 100) : null
+      const risolti           = risoltiRes.count          ?? 0
+      const handoffOggi       = handoffOggiRes.count      ?? 0
+      const handoffGhl        = handoffGhlRes.count       ?? 0
+      const handoffC3         = handoffC3Res.count        ?? 0
+      const waPendingC3       = waPendingC3Res.count      ?? 0
+      const waPendingGhl      = waPendingGhlRes.count     ?? 0
+      const bozzeInviateOggi  = bozzeInviateRes.count     ?? 0
+      const decise            = risolti + handoffOggi
+      const qgApprovati       = decise > 0 ? Math.round((risolti / decise) * 100) : null
 
       setStats({
         sessioniOggi:    sessioniRes.count ?? 0,
@@ -118,11 +130,12 @@ function useDashboardStats() {
         handoffC3,
         handoffAperti:   handoffGhl + handoffC3,
         qgApprovati,
-        novitaNormative: normativeRes.count  ?? 0,
-        daApprovare:     approvalsRes.count  ?? 0,
+        novitaNormative: normativeRes.count ?? 0,
+        daApprovare:     approvalsRes.count ?? 0,
         waPendingC3,
         waPendingGhl,
         waPending:       waPendingC3 + waPendingGhl,
+        bozzeInviateOggi,
       })
     } catch {
       /* mantieni i valori precedenti */
@@ -190,7 +203,7 @@ export default function Dashboard({ onLogout }) {
           <div className="text-[15px] font-semibold tracking-tight text-[#f5f5f7]">
             UP CAF <span className="text-uc-blue">AI</span>
           </div>
-          <div className="mt-0.5 text-[10px] text-white/25">Gateway v2.33</div>
+          <div className="mt-0.5 text-[10px] text-white/25">Gateway v2.35</div>
         </div>
 
         <nav className="flex flex-1 flex-col gap-0.5 px-2 py-4" aria-label="Sezioni">
@@ -230,7 +243,7 @@ export default function Dashboard({ onLogout }) {
             <span className="h-1.5 w-1.5 rounded-full bg-uc-green" aria-hidden="true" />
             <span className="text-[10px] font-medium text-uc-green">Live</span>
           </div>
-          <span className="text-[10px] text-white/20">v3.2</span>
+          <span className="text-[10px] text-white/20">v3.3</span>
         </div>
       </aside>
 
@@ -411,7 +424,6 @@ function ViewWhatsApp() {
   )
 }
 
-// v3.2 — WhatsAppPanel canale="ghl" al posto del banner "workflow in bozza"
 function ViewGHL() {
   return (
     <div className="flex flex-col gap-3 p-3 pb-5 sm:p-4 sm:px-5">
@@ -442,12 +454,31 @@ function ViewSistema() {
 
 // ─── HEADER STATS ─────────────────────────────────────────────────────────────
 function HeaderStats({ stats }) {
-  const bozzeC3   = stats.waPendingC3    ?? 0
-  const bozzeGhl  = stats.waPendingGhl   ?? 0
-  const bozzeTot  = bozzeC3 + bozzeGhl
-  const handoff   = stats.handoffAperti  ?? 0
-  const normative = stats.novitaNormative ?? 0
-  const qg        = stats.qgApprovati
+  const bozzeC3          = stats.waPendingC3       ?? 0
+  const bozzeGhl         = stats.waPendingGhl      ?? 0
+  const bozzeTot         = bozzeC3 + bozzeGhl
+  const handoff          = stats.handoffAperti     ?? 0
+  const normative        = stats.novitaNormative   ?? 0
+  const qg               = stats.qgApprovati
+  const bozzeInviate     = stats.bozzeInviateOggi  ?? 0
+
+  // Sottotitolo card AI: mostra entrambe le fonti se disponibili
+  const subAI = (() => {
+    const parti = []
+    if (qg != null) {
+      parti.push((stats.risoltiOggi ?? 0) + ' risolte · ' + (stats.handoffOggi ?? 0) + ' handoff')
+    }
+    if (bozzeInviate > 0) {
+      parti.push(bozzeInviate + ' bozze accettate oggi')
+    }
+    if (parti.length === 0) {
+      return 'nessuna conversazione conclusa oggi'
+    }
+    return parti.join(' · ')
+  })()
+
+  // Valore principale card AI: percentuale QG se disponibile, altrimenti bozze accettate
+  const valAI = qg != null ? qg + '%' : (bozzeInviate > 0 ? bozzeInviate : '—')
 
   const items = [
     {
@@ -463,11 +494,9 @@ function HeaderStats({ stats }) {
       color: handoff > 0 ? 'text-uc-amber' : 'text-uc-ink',
     },
     {
-      val:   qg == null ? '—' : qg + '%',
+      val:   valAI,
       label: "Risolte dall'AI",
-      sub:   qg == null
-               ? 'nessuna conversazione conclusa oggi'
-               : (stats.risoltiOggi ?? 0) + ' risolte · ' + (stats.handoffOggi ?? 0) + ' handoff, oggi',
+      sub:   subAI,
       color: 'text-uc-green',
     },
     {
