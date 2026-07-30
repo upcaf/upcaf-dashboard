@@ -1,6 +1,15 @@
 // src/components/panels/WhatsAppPanel.jsx
 // Pannello bozze in attesa di approvazione — Canale 3 e Canale 2 GHL
-// Versione: 1.3 — 29 luglio 2026
+// Versione: 1.4 — 30 luglio 2026
+//
+// v1.4 — Gestione contatti LID:
+//   Quando il gateway risponde 422 con { lid: true }, l'errore rosso generico
+//   viene sostituito da un avviso giallo specifico che spiega la situazione
+//   e fornisce un link diretto alla conversazione GHL per l'invio manuale.
+//   Il link GHL è costruito con l'URL base di GHL + contactId.
+//   Stessa gestione applicata sia in WhatsAppCard (bozze Canale 2)
+//   che in ApprovalsPanel (DA_APPROVARE) tramite lo stesso pattern
+//   { lid: true } restituito da /approvals/send.
 //
 // v1.3 — Canale 2 GHL human-in-the-loop:
 //   Prop "canale" che parametrizza tutto il comportamento:
@@ -8,11 +17,6 @@
 //     canale="ghl"                 → Canale 2 GHL, endpoint /ghl/send e /ghl/reject,
 //                                    /wa/pending?canale=whatsapp_inbound,
 //                                    label badge "GHL / META WA"
-//   Il campo contact_id in ogni record pending è l'ID GHL quando canale="ghl",
-//   il numero WhatsApp quando canale="operativo". L'endpoint /ghl/send si aspetta
-//   contact_id (non numero) per chiamare la GHL Conversations API.
-//   Tutto il resto — motivo correzione, selettore, logica modificato/invariato,
-//   mobile layout — è invariato dalla v1.2.
 //
 // v1.2: ottimizzazione mobile (bottoni full-width, textarea 5 righe,
 //       griglia motivi 2 colonne, header verticale su small).
@@ -23,6 +27,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Card, EmptyState, ErrorBanner, LoadingState, formatDateTime } from '../ui'
 
 const GATEWAY_URL = 'https://gateway-production-4696.up.railway.app'
+
+// URL base GHL per link conversazione — apre direttamente la chat del contatto
+const GHL_CONVERSATION_URL = 'https://app.gohighlevel.com/v2/location/otZi0Yae4nEnmUzTXzOD/conversations/'
 
 const MOTIVO_OBBLIGATORIO = true
 
@@ -55,13 +62,11 @@ async function fetchPending(canale) {
  * Invia la bozza approvata.
  *
  * Canale 3: POST /openwa/send con { pending_id, numero, testo_finale, motivo_correzione }
- *   "numero" è il numero WhatsApp — serve a whatsapp-web.js per trovare la chat.
- *
  * Canale 2 GHL: POST /ghl/send con { pending_id, contact_id, testo_finale, motivo_correzione }
- *   "contact_id" è l'ID GHL — serve alla GHL Conversations API.
- *   Sul record pending il campo "numero" contiene contact_phone (se disponibile)
- *   o contact_id come fallback. Il campo "contact_id" della tabella è quello che
- *   serve all'endpoint /ghl/send.
+ *
+ * v1.4: se la risposta è 422 con { lid: true }, lancia un errore speciale
+ * con la proprietà .lid = true così WhatsAppCard può mostrare l'avviso LID
+ * invece del messaggio di errore generico rosso.
  */
 async function sendMessage({ canale, pending_id, item, testo_finale, motivo_correzione }) {
   let endpoint, body
@@ -90,6 +95,20 @@ async function sendMessage({ canale, pending_id, item, testo_finale, motivo_corr
     body: JSON.stringify(body),
   })
 
+  // ── Gestione LID (v1.4) ───────────────────────────────────────────────
+  // Il gateway risponde 422 con { lid: true } quando il contact_id è un
+  // identificatore interno Meta (@lid) non supportato dalla GHL API.
+  if (res.status === 422) {
+    let respBody = {}
+    try { respBody = await res.json() } catch { /* non JSON */ }
+    if (respBody?.lid) {
+      const err = new Error(respBody.error || 'Contatto LID')
+      err.lid = true
+      err.contactId = item.contact_id || null
+      throw err
+    }
+  }
+
   if (!res.ok) {
     let dettaglio = 'HTTP ' + res.status
     try {
@@ -115,6 +134,35 @@ async function rejectMessage({ canale, pending_id }) {
   return res.json()
 }
 
+// ── Avviso LID ────────────────────────────────────────────────────────────
+// Mostrato al posto dell'errore rosso quando il contatto è un @lid.
+// Fornisce un link diretto alla conversazione GHL per l'invio manuale.
+function LidWarning({ contactId }) {
+  const ghlUrl = contactId
+    ? GHL_CONVERSATION_URL + contactId
+    : null
+
+  return (
+    <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+      <div className="font-semibold mb-1">⚠️ Contatto LID — invio manuale richiesto</div>
+      <p className="text-xs text-amber-800 mb-2">
+        Questo contatto usa un identificatore interno Meta che GHL non accetta via API.
+        Copia il testo qui sopra e invialo direttamente dalla conversazione GHL.
+      </p>
+      {ghlUrl && (
+        <a
+          href={ghlUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-block rounded-lg bg-amber-200 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-300 transition"
+        >
+          Apri conversazione in GHL →
+        </a>
+      )}
+    </div>
+  )
+}
+
 // ── Singola card bozza ────────────────────────────────────────────────────
 
 function WhatsAppCard({ item, canale, onSent, onRejected }) {
@@ -125,6 +173,8 @@ function WhatsAppCard({ item, canale, onSent, onRejected }) {
   const [motivo, setMotivo]   = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState(null)
+  const [isLid, setIsLid]     = useState(false)
+  const [lidContactId, setLidContactId] = useState(null)
 
   const minutiAttesa = Math.floor(
     (Date.now() - new Date(item.created_at).getTime()) / 60000
@@ -143,6 +193,8 @@ function WhatsAppCard({ item, canale, onSent, onRejected }) {
     if (!testo.trim() || bloccatoDalMotivo) return
     setLoading(true)
     setError(null)
+    setIsLid(false)
+    setLidContactId(null)
     try {
       await sendMessage({
         canale,
@@ -153,7 +205,13 @@ function WhatsAppCard({ item, canale, onSent, onRejected }) {
       })
       onSent(item.id)
     } catch (err) {
-      setError('Errore invio: ' + err.message)
+      if (err.lid) {
+        // Contatto LID — mostra avviso giallo, non errore rosso
+        setIsLid(true)
+        setLidContactId(err.contactId || item.contact_id || null)
+      } else {
+        setError('Errore invio: ' + err.message)
+      }
     } finally {
       setLoading(false)
     }
@@ -162,6 +220,7 @@ function WhatsAppCard({ item, canale, onSent, onRejected }) {
   async function handleReject() {
     setLoading(true)
     setError(null)
+    setIsLid(false)
     try {
       await rejectMessage({ canale, pending_id: item.id })
       onRejected(item.id)
@@ -286,10 +345,13 @@ function WhatsAppCard({ item, canale, onSent, onRejected }) {
         </div>
       )}
 
-      {/* ── Errore ── */}
-      {error && (
+      {/* ── Errore generico ── */}
+      {error && !isLid && (
         <div className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>
       )}
+
+      {/* ── Avviso LID (v1.4) ── */}
+      {isLid && <LidWarning contactId={lidContactId} />}
 
       {/* ── Bottoni azione — impilati su mobile, affiancati su sm+ ── */}
       <div className="mt-3 flex flex-col gap-2 sm:flex-row">
