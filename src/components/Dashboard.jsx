@@ -1,18 +1,10 @@
 // src/components/Dashboard.jsx
-// v3.3 — 29 luglio 2026
+// v3.4 — 25 agosto 2026
 //
-// Unica modifica rispetto alla v3.2:
-// Metrica "Risolte dall'AI" corretta per Canale 3 e GHL.
-//
-// Il problema: sul Canale 3 (e GHL human-in-the-loop) nessuna risposta
-// produce esito 'risolto' in session_logs — l'esito è sempre
-// 'in_attesa_operatore', 'handoff' o 'da_approvare'. La metrica era 0% fisso.
-//
-// Fix: query aggiuntiva su whatsapp_pending che conta stato='inviato' oggi
-// (bozze accettate invariate dall'operatore = proxy di accuratezza AI).
-// La card mostra due righe separate:
-//   - Pipeline diretta (GHL QG): risoltiOggi / decise
-//   - Canale 3 + GHL human-in-the-loop: bozzeInviateOggi bozze accettate
+// Unica modifica rispetto alla v3.3:
+// ViewGHL ora passa canale="whatsapp_inbound" ad ApprovalsPanel,
+// così le approvazioni mostrate nella tab GHL sono solo quelle GHL
+// e non quelle del Canale 3.
 //
 // Regola Vite 8: zero template literal nel JSX — solo concatenazioni.
 
@@ -243,7 +235,7 @@ export default function Dashboard({ onLogout }) {
             <span className="h-1.5 w-1.5 rounded-full bg-uc-green" aria-hidden="true" />
             <span className="text-[10px] font-medium text-uc-green">Live</span>
           </div>
-          <span className="text-[10px] text-white/20">v3.3</span>
+          <span className="text-[10px] text-white/20">v3.4</span>
         </div>
       </aside>
 
@@ -428,7 +420,7 @@ function ViewGHL() {
   return (
     <div className="flex flex-col gap-3 p-3 pb-5 sm:p-4 sm:px-5">
       <WhatsAppPanel canale="ghl" />
-      <ApprovalsPanel />
+      <ApprovalsPanel canale="whatsapp_inbound" />
       <HandoffsPanel canale="whatsapp_inbound" title="Handoff aperti — GHL" />
       <SessionsPanel canale="whatsapp_inbound" title="Conversazioni GHL" />
     </div>
@@ -462,7 +454,6 @@ function HeaderStats({ stats }) {
   const qg               = stats.qgApprovati
   const bozzeInviate     = stats.bozzeInviateOggi  ?? 0
 
-  // Sottotitolo card AI: mostra entrambe le fonti se disponibili
   const subAI = (() => {
     const parti = []
     if (qg != null) {
@@ -477,7 +468,6 @@ function HeaderStats({ stats }) {
     return parti.join(' · ')
   })()
 
-  // Valore principale card AI: percentuale QG se disponibile, altrimenti bozze accettate
   const valAI = qg != null ? qg + '%' : (bozzeInviate > 0 ? bozzeInviate : '—')
 
   const items = [
