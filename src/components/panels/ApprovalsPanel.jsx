@@ -1,46 +1,48 @@
 // src/components/panels/ApprovalsPanel.jsx
 // Gamba 3 — Pannello approvazioni DA_APPROVARE
-// Versione: 1.1 — 25 luglio 2026
+// Versione: 1.2 — 25 agosto 2026
+//
+// v1.2:
+//   Fix 1 — URL gateway corretto (4696 non a488).
+//   Fix 2 — Prop `canale` per filtrare per canale:
+//     <ApprovalsPanel />                          → tutte le approvazioni (tab Operativo)
+//     <ApprovalsPanel canale="whatsapp_inbound" /> → solo GHL (tab GHL)
+//     L'endpoint /approvals/pending accetta ?canale= per filtrare lato gateway.
 //
 // v1.1: mostra il MESSAGGIO DEL CLIENTE sopra la bozza.
-//   Senza la domanda originale l'operatore non può giudicare se la risposta è
-//   pertinente: approverebbe alla cieca proprio sui casi con conseguenza legale
-//   diretta, cioè quelli per cui questo pannello esiste.
-//   Aggiunto anche il nome del contatto quando disponibile.
-//
-// Mostra le risposte in attesa di approvazione operatore.
-// Per ogni bozza: domanda cliente, testo modificabile, citazioni KB, Invia / Rifiuta.
-// Real-time: polling ogni 15 secondi.
 
 import { useCallback, useEffect, useState } from 'react'
 import { Card, EmptyState, ErrorBanner, LoadingState, formatDateTime } from '../ui'
 
-const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL || 'https://gateway-production-a488.up.railway.app'
+const GATEWAY_URL = import.meta.env.VITE_GATEWAY_URL || 'https://gateway-production-4696.up.railway.app'
 
-async function fetchPending() {
-  const res = await fetch(`${GATEWAY_URL}/approvals/pending`)
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+async function fetchPending(canale) {
+  const url = canale
+    ? GATEWAY_URL + '/approvals/pending?canale=' + canale
+    : GATEWAY_URL + '/approvals/pending'
+  const res = await fetch(url)
+  if (!res.ok) throw new Error('HTTP ' + res.status)
   const data = await res.json()
   return data.approvals || []
 }
 
 async function sendApproval({ approval_id, contact_id, testo_finale }) {
-  const res = await fetch(`${GATEWAY_URL}/approvals/send`, {
+  const res = await fetch(GATEWAY_URL + '/approvals/send', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ approval_id, contact_id, testo_finale }),
   })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) throw new Error('HTTP ' + res.status)
   return res.json()
 }
 
 async function rejectApproval(approval_id) {
-  const res = await fetch(`${GATEWAY_URL}/approvals/reject`, {
+  const res = await fetch(GATEWAY_URL + '/approvals/reject', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ approval_id }),
   })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) throw new Error('HTTP ' + res.status)
   return res.json()
 }
 
@@ -91,7 +93,8 @@ function ApprovalCard({ item, onSent, onRejected }) {
   }
 
   return (
-    <div className={`rounded-xl border p-4 ${urgente ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white'}`}>
+    <div className={'rounded-xl border p-4 ' + (urgente ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white')}>
+
       {/* Header */}
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
@@ -122,9 +125,7 @@ function ApprovalCard({ item, onSent, onRejected }) {
         </span>
       </div>
 
-      {/* Messaggio del cliente — v1.1
-          È il riferimento per giudicare la risposta: sta sopra la bozza,
-          in evidenza, non nascosto dietro un toggle. */}
+      {/* Messaggio del cliente */}
       <div className="mb-3 rounded-lg border-l-4 border-slate-400 bg-slate-50 px-3 py-2">
         <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
           Il cliente ha scritto
@@ -135,8 +136,7 @@ function ApprovalCard({ item, onSent, onRejected }) {
           </p>
         ) : (
           <p className="text-sm italic text-slate-400">
-            Messaggio non registrato (bozza creata prima della v1.1) —
-            controlla la conversazione in GHL prima di approvare.
+            Messaggio non registrato — controlla la conversazione in GHL prima di approvare.
           </p>
         )}
       </div>
@@ -148,7 +148,7 @@ function ApprovalCard({ item, onSent, onRejected }) {
         </div>
       )}
 
-      {/* Bozza di risposta — modificabile */}
+      {/* Bozza di risposta */}
       <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
         Bozza di risposta
       </div>
@@ -168,7 +168,7 @@ function ApprovalCard({ item, onSent, onRejected }) {
             onClick={() => setCitOpen(!citOpen)}
             className="text-xs text-blue-600 hover:underline"
           >
-            {citOpen ? '▲ nascondi' : `▼ ${citazioni.length} citazion${citazioni.length === 1 ? 'e' : 'i'} KB`}
+            {citOpen ? '▲ nascondi' : '▼ ' + citazioni.length + ' citazion' + (citazioni.length === 1 ? 'e' : 'i') + ' KB'}
           </button>
           {citOpen && (
             <ul className="mt-1 space-y-1">
@@ -190,18 +190,18 @@ function ApprovalCard({ item, onSent, onRejected }) {
       )}
 
       {/* Azioni */}
-      <div className="mt-3 flex gap-2">
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
         <button
           onClick={handleSend}
           disabled={loading || !testo.trim()}
-          className="flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+          className="flex-1 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
         >
-          {loading ? 'Invio...' : '✓ Invia al cliente'}
+          {loading ? 'Invio in corso...' : '✓ Invia al cliente'}
         </button>
         <button
           onClick={handleReject}
           disabled={loading}
-          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition"
+          className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition sm:w-auto"
         >
           Rifiuta
         </button>
@@ -210,14 +210,14 @@ function ApprovalCard({ item, onSent, onRejected }) {
   )
 }
 
-export default function ApprovalsPanel() {
+export default function ApprovalsPanel({ canale } = {}) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   const load = useCallback(async () => {
     try {
-      const data = await fetchPending()
+      const data = await fetchPending(canale)
       setItems(data)
       setError(null)
     } catch (err) {
@@ -225,11 +225,11 @@ export default function ApprovalsPanel() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [canale])
 
   useEffect(() => {
     load()
-    const interval = setInterval(load, 15000) // polling ogni 15s
+    const interval = setInterval(load, 15000)
     return () => clearInterval(interval)
   }, [load])
 
@@ -243,7 +243,7 @@ export default function ApprovalsPanel() {
 
   return (
     <Card
-      title={`Risposte da approvare${items.length > 0 ? ` (${items.length})` : ''}`}
+      title={'Risposte da approvare' + (items.length > 0 ? ' (' + items.length + ')' : '')}
       action={
         <button
           onClick={load}
