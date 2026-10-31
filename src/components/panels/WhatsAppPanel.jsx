@@ -494,15 +494,6 @@ export default function WhatsAppPanel({ canale = 'operativo' }) {
     return () => { clearInterval(i1); clearInterval(i2) }
   }, [load, checkStatus])
 
-  // Su schermo largo apre da solo la prima chat; su telefono resta la lista.
-  useEffect(() => {
-    if (items.length === 0) return
-    const esiste = items.some((i) => i.id === selId)
-    if (esiste) return
-    const largo = typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
-    setSelId(largo ? items[0].id : null)
-  }, [items, selId])
-
   function rimuovi(id) {
     setItems((prev) => prev.filter((i) => i.id !== id))
     setSelId((prev) => (prev === id ? null : prev))
@@ -513,7 +504,9 @@ export default function WhatsAppPanel({ canale = 'operativo' }) {
     ? 'GHL / Meta WhatsApp' + (items.length > 0 ? ' (' + items.length + ')' : '')
     : 'WhatsApp Operativo'  + (items.length > 0 ? ' (' + items.length + ')' : '')
 
-  const selezionato = items.find((i) => i.id === selId) || null
+  // Su schermo largo apre da solo la prima chat; su telefono resta la lista.
+  const largo = typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
+  const selezionato = items.find((i) => i.id === selId) || (largo ? items[0] || null : null)
 
   function testoDi(item) {
     return bozze[item.id] !== undefined ? bozze[item.id] : (item.risposta_ai || '')
@@ -598,7 +591,7 @@ export default function WhatsAppPanel({ canale = 'operativo' }) {
                   key={item.id}
                   item={item}
                   canale={canale}
-                  attiva={item.id === selId}
+                  attiva={selezionato ? item.id === selezionato.id : false}
                   onPick={() => setSelId(item.id)}
                 />
               ))}
