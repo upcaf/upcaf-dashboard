@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { endOfTodayISO, startOfTodayISO, supabase } from '../lib/supabase'
+import AppuntamentiPanel from './panels/AppuntamentiPanel'
 import HandoffsPanel from './panels/HandoffsPanel'
 import KbQueryPanel from './panels/KbQueryPanel'
 import MarketingPanel from './panels/MarketingPanel'
@@ -24,12 +25,13 @@ const NAV = [
   { id: 'whatsapp',   label: 'WhatsApp',         icon: 'ti-brand-whatsapp'   },
   { id: 'marketing',  label: 'Marketing',        icon: 'ti-speakerphone'     },
   { id: 'normative',  label: 'Normative',        icon: 'ti-news'             },
+  { id: 'appuntamenti', label: 'Appuntamenti',   icon: 'ti-calendar'         },
   { id: 'kb',         label: 'Consulente AI KB', icon: 'ti-database-search'  },
   { id: 'sistema',    label: 'Sistema',          icon: 'ti-activity'         },
 ]
 
 const MOBILE_PRIMARY   = ['whatsapp', 'marketing']
-const MOBILE_SECONDARY = ['normative', 'kb', 'sistema']
+const MOBILE_SECONDARY = ['appuntamenti', 'normative', 'kb', 'sistema']
 
 const SUBTITLES = {
   whatsapp:  'OpenWA e GoHighLevel in un\'unica lista',
@@ -294,6 +296,7 @@ export default function Dashboard({ onLogout }) {
           {active === 'whatsapp'   && <ViewWhatsApp />}
           {active === 'marketing'  && <MarketingPanel />}
           {active === 'normative'  && <NormativePanel />}
+          {active === 'appuntamenti' && <div className="p-3 pb-5 sm:p-4 sm:px-5"><AppuntamentiPanel /></div>}
           {active === 'kb'         && <ViewKB />}
           {active === 'sistema'    && <ViewSistema />}
         </main>
