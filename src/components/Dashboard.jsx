@@ -291,7 +291,7 @@ export default function Dashboard({ onLogout }) {
           className="flex-1 overflow-y-auto pb-[72px] md:pb-0"
           aria-label={'Sezione ' + active}
         >
-          {active === 'whatsapp'   && <ViewWhatsApp stats={stats} />}
+          {active === 'whatsapp'   && <ViewWhatsApp />}
           {active === 'marketing'  && <MarketingPanel />}
           {active === 'normative'  && <NormativePanel />}
           {active === 'kb'         && <ViewKB />}
@@ -384,10 +384,10 @@ export default function Dashboard({ onLogout }) {
 
 // ─── VIEWS ───────────────────────────────────────────────────────────────────
 
-function ViewWhatsApp({ stats }) {
+function ViewWhatsApp() {
   return (
     <div className="flex flex-col gap-3 p-3 pb-5 sm:p-4 sm:px-5">
-      <HeaderStats stats={stats} />
+      <HeaderStats />
       <WhatsAppPanel />
       <HandoffsPanel title="Handoff aperti — OpenWA e GHL" />
     </div>
@@ -412,37 +412,68 @@ function ViewSistema() {
 }
 
 // ─── HEADER STATS ─────────────────────────────────────────────────────────────
-function HeaderStats({ stats }) {
-  const bozzeC3          = stats.waPendingC3       ?? 0
-  const bozzeGhl         = stats.waPendingGhl      ?? 0
-  const bozzeTot         = bozzeC3 + bozzeGhl
-  const handoff          = stats.handoffAperti     ?? 0
-  const bozzeInviate     = stats.bozzeInviateOggi  ?? 0
-  const bozzeInvariate   = stats.bozzeInvariateOggi ?? 0
+// I numeri arrivano dal gateway (/wa/stats): la dashboard non può leggere
+// whatsapp_pending direttamente (RLS attiva, voluto).
+const GATEWAY_STATS_URL = 'https://gateway-production-4696.up.railway.app/wa/stats'
+
+function eur(usd) {
+  return (usd ?? 0).toFixed(2).replace('.', ',') + ' $'
+}
+
+function HeaderStats() {
+  const [dati, setDati] = useState(null)
+
+  useEffect(() => {
+    let vivo = true
+    async function carica() {
+      try {
+        const res = await fetch(GATEWAY_STATS_URL)
+        if (!res.ok) return
+        const json = await res.json()
+        if (vivo) setDati(json)
+      } catch { /* gateway non raggiungibile: restano i valori precedenti */ }
+    }
+    carica()
+    const t = setInterval(carica, 15000)
+    return () => { vivo = false; clearInterval(t) }
+  }, [])
+
+  const s = dati?.stats || {}
+  const c = dati?.costi || null
+  const bozze = s.bozze_in_attesa ?? 0
+  const inviate = s.inviate_oggi ?? 0
+  const modificate = s.modificate_oggi ?? 0
+  const handoff = s.handoff_aperti ?? 0
 
   const items = [
     {
-      val:   bozzeTot,
+      val:   bozze,
       label: 'Bozze in attesa',
-      sub:   bozzeC3 + ' Canale 3 · ' + bozzeGhl + ' GHL',
-      color: bozzeTot > 0 ? 'text-red-500' : 'text-uc-ink',
+      sub:   s.bozze_vecchie ? s.bozze_vecchie + ' vecchie nascoste' : null,
+      color: bozze > 0 ? 'text-red-500' : 'text-uc-ink',
     },
     {
       val:   handoff,
       label: 'Handoff aperti',
-      sub:   (stats.handoffGhl ?? 0) + ' GHL · ' + (stats.handoffC3 ?? 0) + ' Canale 3',
+      sub:   'si chiudono quando rispondi',
       color: handoff > 0 ? 'text-uc-amber' : 'text-uc-ink',
     },
     {
-      val:   bozzeInviate,
-      label: 'Bozze inviate oggi',
-      sub:   bozzeInvariate + ' senza modifiche · ' + (bozzeInviate - bozzeInvariate) + ' corrette',
+      val:   inviate,
+      label: 'Inviate oggi',
+      sub:   (inviate - modificate) + ' senza modifiche · ' + modificate + ' corrette',
       color: 'text-uc-green',
+    },
+    {
+      val:   c ? eur(c.oggi.usd) : '—',
+      label: 'Costo API oggi',
+      sub:   c ? c.oggi.chiamate + ' chiamate · 7 gg ' + eur(c.sette_giorni.usd) + ' (stima)' : 'in attesa dei dati',
+      color: 'text-uc-ink',
     },
   ]
 
   return (
-    <div className="grid grid-cols-3 gap-2 sm:gap-3" role="region" aria-label="Riepilogo">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3" role="region" aria-label="Riepilogo">
       {items.map(({ val, label, sub, color }) => (
         <div key={label} className="rounded-xl border border-uc-border bg-white p-3 sm:p-4">
           <div className={'text-[22px] sm:text-[26px] font-normal tracking-tight ' + color}>{val}</div>

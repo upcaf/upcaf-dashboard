@@ -40,7 +40,20 @@ const GHL_CONVERSATION_URL = 'https://app.gohighlevel.com/v2/location/otZi0Yae4n
 
 // Le bozze senza canale (vecchie) sono del canale GHL, come nei contatori.
 function canaleDi(item) {
-  return item.canale === 'whatsapp_operativo' ? 'operativo' : 'ghl'
+  return (!item.canale || item.canale === 'whatsapp_inbound') ? 'ghl' : 'operativo'
+}
+
+const VECCHIE_GIORNI = 7
+function eVecchia(item) {
+  return Date.now() - new Date(item.created_at).getTime() > VECCHIE_GIORNI * 86400000
+}
+
+async function fetchStorico(item) {
+  const id = item.contact_id || item.numero
+  const res = await fetch(GATEWAY_URL + '/wa/history?contact_id=' + encodeURIComponent(id))
+  if (!res.ok) throw new Error('HTTP ' + res.status)
+  const data = await res.json()
+  return data.storia || []
 }
 
 function buildFetchUrl(canale) {
@@ -285,6 +298,16 @@ function ChatDetail({ item, testo, onTesto, onSent, onRejected, onBack }) {
   const [error, setError]     = useState(null)
   const [isLid, setIsLid]     = useState(false)
   const [lidContactId, setLidContactId] = useState(null)
+  const [storico, setStorico] = useState([])
+
+  useEffect(() => {
+    if (item.demo) return undefined
+    let vivo = true
+    fetchStorico(item)
+      .then((s) => { if (vivo) setStorico(s.filter((r) => r.id !== item.id)) })
+      .catch(() => { /* lo storico è un extra: se manca, resta il messaggio attuale */ })
+    return () => { vivo = false }
+  }, [item])
 
   const modificato = useMemo(
     () => !senzaBozza && testo.trim() !== bozzaOriginale.trim(),
@@ -369,6 +392,20 @@ function ChatDetail({ item, testo, onTesto, onSent, onRejected, onBack }) {
 
       {/* ── Messaggi ── */}
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-4">
+        {storico.map((r) => (
+          <div key={r.id} className="flex flex-col gap-1.5">
+            {r.messaggio_ricevuto && (
+              <div className="max-w-[85%] self-start rounded-2xl rounded-tl-sm bg-white px-3 py-2 opacity-80 shadow-sm">
+                <p className="whitespace-pre-wrap text-sm text-slate-700">{r.messaggio_ricevuto}</p>
+              </div>
+            )}
+            {r.testo_inviato && (
+              <div className="max-w-[85%] self-end rounded-2xl rounded-tr-sm bg-green-100 px-3 py-2 opacity-90 shadow-sm">
+                <p className="whitespace-pre-wrap text-sm text-slate-800">{r.testo_inviato}</p>
+              </div>
+            )}
+          </div>
+        ))}
         <span className="self-center rounded-full bg-white px-3 py-1 text-xs text-slate-500">
           {formatDateTime(item.created_at)}
         </span>
@@ -468,6 +505,7 @@ export default function WhatsAppPanel({ canale = 'tutti' }) {
   const [selId, setSelId]       = useState(null)
   const [bozze, setBozze]       = useState({})
   const [filtro, setFiltro]     = useState('tutti')
+  const [mostraVecchie, setMostraVecchie] = useState(false)
 
   const isCanale3 = canale !== 'ghl'
 
@@ -518,9 +556,11 @@ export default function WhatsAppPanel({ canale = 'tutti' }) {
   const connesso = waStatus === 'pronto'
   const titoloPannello = 'WhatsApp' + (items.length > 0 ? ' (' + items.length + ')' : '')
 
-  const nOperativo = items.filter((i) => canaleDi(i) === 'operativo').length
-  const nGhl       = items.length - nOperativo
-  const visibili   = filtro === 'tutti' ? items : items.filter((i) => canaleDi(i) === filtro)
+  const nVecchie   = items.filter(eVecchia).length
+  const base       = mostraVecchie ? items : items.filter((i) => !eVecchia(i))
+  const nOperativo = base.filter((i) => canaleDi(i) === 'operativo').length
+  const nGhl       = base.length - nOperativo
+  const visibili   = filtro === 'tutti' ? base : base.filter((i) => canaleDi(i) === filtro)
 
   // Su schermo largo apre da solo la prima chat; su telefono resta la lista.
   const largo = typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
@@ -613,7 +653,7 @@ export default function WhatsAppPanel({ canale = 'tutti' }) {
               {canale === 'tutti' && (
                 <div className="sticky top-0 z-10 flex gap-1.5 border-b border-slate-100 bg-white px-3 py-2">
                   {[
-                    { key: 'tutti',     label: 'Tutti',   n: items.length },
+                    { key: 'tutti',     label: 'Tutti',   n: base.length },
                     { key: 'operativo', label: 'OpenWA',  n: nOperativo },
                     { key: 'ghl',       label: 'GHL',     n: nGhl },
                   ].map(({ key, label, n }) => (
@@ -631,6 +671,15 @@ export default function WhatsAppPanel({ canale = 'tutti' }) {
                       {label + ' ' + n}
                     </button>
                   ))}
+                  {nVecchie > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setMostraVecchie(!mostraVecchie)}
+                      className="ml-auto rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-500 hover:bg-slate-50"
+                    >
+                      {(mostraVecchie ? 'Nascondi vecchie ' : 'Vecchie ') + nVecchie}
+                    </button>
+                  )}
                 </div>
               )}
               {visibili.length === 0 && (
