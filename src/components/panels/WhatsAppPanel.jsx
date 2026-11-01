@@ -167,6 +167,41 @@ function LidWarning({ contactId }) {
   )
 }
 
+// ── Modalità dimostrativa (?demo=1) ───────────────────────────────────────
+// Mostra tre chat finte per vedere la grafica anche senza messaggi in attesa.
+// Non chiama mai il gateway: invio e scarto agiscono solo sullo schermo.
+const DEMO_ATTIVA =
+  typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).get('demo') === '1'
+
+const ADESSO = Date.now()
+const DEMO_ITEMS = [
+  {
+    id: 'demo-1', demo: true, numero: '+39 000 0000001', contact_id: 'demo-1',
+    nome_cliente: 'Marco Bianchi',
+    messaggio_ricevuto: 'Buongiorno, per il 730 cosa devo portare?',
+    risposta_ai: 'Buongiorno, per il 730 servono CU, documento d’identità e le spese detraibili. Ti aspetto giovedì alle 15:30.',
+    sintesi_agente: 'Richiesta documenti 730',
+    created_at: new Date(ADESSO - 4 * 60000).toISOString(),
+  },
+  {
+    id: 'demo-2', demo: true, numero: '+39 000 0000002', contact_id: 'demo-2',
+    nome_cliente: 'Giulia Fontana',
+    messaggio_ricevuto: 'Ciao, ho una domanda sul bonus nido, posso passare domani?',
+    risposta_ai: 'Ciao, ricevo su appuntamento, trovi i posti liberi qui: https://appt.link/appuntamento-u-p-caf',
+    sintesi_agente: null,
+    created_at: new Date(ADESSO - 15 * 60000).toISOString(),
+  },
+  {
+    id: 'demo-3', demo: true, numero: '+39 000 0000003', contact_id: 'demo-3',
+    nome_cliente: 'Elena Tessari',
+    messaggio_ricevuto: 'È arrivata la mia pensione? Mi avevano detto che dovevi controllare.',
+    risposta_ai: '',
+    sintesi_agente: 'Stato pratica: passa a Ulisse',
+    created_at: new Date(ADESSO - 32 * 60000).toISOString(),
+  },
+]
+
 // ── Utilità grafiche ──────────────────────────────────────────────────────
 
 function iniziali(nome, fallback) {
@@ -260,6 +295,7 @@ function ChatDetail({ item, canale, testo, onTesto, onSent, onRejected, onBack }
 
   async function handleSend() {
     if (!testo.trim() || bloccatoDalMotivo) return
+    if (item.demo) { onSent(item.id); return }
     setLoading(true)
     setError(null)
     setIsLid(false)
@@ -286,6 +322,7 @@ function ChatDetail({ item, canale, testo, onTesto, onSent, onRejected, onBack }
   }
 
   async function handleReject() {
+    if (item.demo) { onRejected(item.id); return }
     setLoading(true)
     setError(null)
     setIsLid(false)
@@ -461,6 +498,11 @@ export default function WhatsAppPanel({ canale = 'operativo' }) {
   const isCanale3 = canale !== 'ghl'
 
   const load = useCallback(async () => {
+    if (DEMO_ATTIVA) {
+      setItems((prev) => (prev.length ? prev : DEMO_ITEMS))
+      setLoading(false)
+      return
+    }
     try {
       const data = await fetchPending(canale)
       setItems(data)
@@ -473,7 +515,7 @@ export default function WhatsAppPanel({ canale = 'operativo' }) {
   }, [canale])
 
   const checkStatus = useCallback(async () => {
-    if (!isCanale3) {
+    if (!isCanale3 || DEMO_ATTIVA) {
       setWaStatus(null)
       return
     }
@@ -548,6 +590,12 @@ export default function WhatsAppPanel({ canale = 'operativo' }) {
       }
     >
       <ErrorBanner message={error} />
+
+      {DEMO_ATTIVA && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          Modalità dimostrativa: chat finte, nessun messaggio viene inviato. Togli ?demo=1 dall'indirizzo per tornare ai dati veri.
+        </div>
+      )}
 
       {isCanale3 && showQR && (
         <div className="mb-3 flex flex-col items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
