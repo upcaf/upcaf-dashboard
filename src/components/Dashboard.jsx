@@ -1,5 +1,5 @@
 // src/components/Dashboard.jsx
-// v3.5 — 1 novembre 2026: una sola pagina WhatsApp (OpenWA + GHL); tolti scheda GHL, "Conversazioni", "Risposte da approvare", "Correzioni" e "Accuratezza normativa"; Operativo = solo riepilogo (gli handoff si gestiscono nella pagina WhatsApp) (restano gli handoff, che bloccano le bozze finché non vengono chiusi).
+// v3.5 — 1 novembre 2026: una sola pagina WhatsApp (OpenWA + GHL); tolti scheda GHL, "Conversazioni", "Risposte da approvare", "Correzioni" e "Accuratezza normativa"; Operativo fuso in WhatsApp: riepilogo in cima alla pagina (restano gli handoff, che bloccano le bozze finché non vengono chiusi).
 // v3.4 — 25 agosto 2026
 //
 // Unica modifica rispetto alla v3.3:
@@ -21,7 +21,6 @@ import WhatsAppPanel from './panels/WhatsAppPanel'
 import { btnSecondary } from './ui'
 
 const NAV = [
-  { id: 'operativo',  label: 'Operativo',        icon: 'ti-layout-dashboard' },
   { id: 'whatsapp',   label: 'WhatsApp',         icon: 'ti-brand-whatsapp'   },
   { id: 'marketing',  label: 'Marketing',        icon: 'ti-speakerphone'     },
   { id: 'normative',  label: 'Normative',        icon: 'ti-news'             },
@@ -29,11 +28,10 @@ const NAV = [
   { id: 'sistema',    label: 'Sistema',          icon: 'ti-activity'         },
 ]
 
-const MOBILE_PRIMARY   = ['whatsapp', 'operativo']
-const MOBILE_SECONDARY = ['marketing', 'normative', 'kb', 'sistema']
+const MOBILE_PRIMARY   = ['whatsapp', 'marketing']
+const MOBILE_SECONDARY = ['normative', 'kb', 'sistema']
 
 const SUBTITLES = {
-  operativo: 'Panoramica cross-canale',
   whatsapp:  'OpenWA e GoHighLevel in un\'unica lista',
   marketing: 'Copy e campagne',
   normative: 'Aggiornamenti normativi',
@@ -164,8 +162,6 @@ export default function Dashboard({ onLogout }) {
   const totalAlerts      = handoffGhl + handoffC3 + daApprovareCount + waPendingC3 + waPendingGhl
 
   const badgeFor = (id) => {
-    if (id === 'operativo' && totalAlerts > 0)
-      return { n: totalAlerts, cls: 'bg-uc-amber' }
     if (id === 'whatsapp') {
       const n = waPendingC3 + waPendingGhl + handoffC3 + handoffGhl + daApprovareCount
       return n > 0 ? { n, cls: 'bg-green-500' } : null
@@ -295,8 +291,7 @@ export default function Dashboard({ onLogout }) {
           className="flex-1 overflow-y-auto pb-[72px] md:pb-0"
           aria-label={'Sezione ' + active}
         >
-          {active === 'operativo'  && <ViewOperativo stats={stats} />}
-          {active === 'whatsapp'   && <ViewWhatsApp />}
+          {active === 'whatsapp'   && <ViewWhatsApp stats={stats} />}
           {active === 'marketing'  && <MarketingPanel />}
           {active === 'normative'  && <NormativePanel />}
           {active === 'kb'         && <ViewKB />}
@@ -389,17 +384,10 @@ export default function Dashboard({ onLogout }) {
 
 // ─── VIEWS ───────────────────────────────────────────────────────────────────
 
-function ViewOperativo({ stats }) {
+function ViewWhatsApp({ stats }) {
   return (
     <div className="flex flex-col gap-3 p-3 pb-5 sm:p-4 sm:px-5">
       <HeaderStats stats={stats} />
-    </div>
-  )
-}
-
-function ViewWhatsApp() {
-  return (
-    <div className="flex flex-col gap-3 p-3 pb-5 sm:p-4 sm:px-5">
       <WhatsAppPanel />
       <HandoffsPanel title="Handoff aperti — OpenWA e GHL" />
     </div>
@@ -429,7 +417,6 @@ function HeaderStats({ stats }) {
   const bozzeGhl         = stats.waPendingGhl      ?? 0
   const bozzeTot         = bozzeC3 + bozzeGhl
   const handoff          = stats.handoffAperti     ?? 0
-  const normative        = stats.novitaNormative   ?? 0
   const bozzeInviate     = stats.bozzeInviateOggi  ?? 0
   const bozzeInvariate   = stats.bozzeInvariateOggi ?? 0
 
@@ -452,16 +439,10 @@ function HeaderStats({ stats }) {
       sub:   bozzeInvariate + ' senza modifiche · ' + (bozzeInviate - bozzeInvariate) + ' corrette',
       color: 'text-uc-green',
     },
-    {
-      val:   normative,
-      label: 'Novità normative',
-      sub:   'Non ancora lette',
-      color: normative > 0 ? 'text-uc-blue' : 'text-uc-ink',
-    },
   ]
 
   return (
-    <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4" role="region" aria-label="Riepilogo">
+    <div className="grid grid-cols-3 gap-2 sm:gap-3" role="region" aria-label="Riepilogo">
       {items.map(({ val, label, sub, color }) => (
         <div key={label} className="rounded-xl border border-uc-border bg-white p-3 sm:p-4">
           <div className={'text-[22px] sm:text-[26px] font-normal tracking-tight ' + color}>{val}</div>
