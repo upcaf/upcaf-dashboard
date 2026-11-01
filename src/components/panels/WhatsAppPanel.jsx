@@ -48,11 +48,19 @@ const MOTIVI = [
 
 // ── Funzioni API parametriche ─────────────────────────────────────────────
 
+// Le bozze senza canale (vecchie) sono del canale GHL, come nei contatori.
+function canaleDi(item) {
+  return item.canale === 'whatsapp_operativo' ? 'operativo' : 'ghl'
+}
+
 function buildFetchUrl(canale) {
   if (canale === 'ghl') {
     return GATEWAY_URL + '/wa/pending?canale=whatsapp_inbound'
   }
-  return GATEWAY_URL + '/wa/pending?canale=whatsapp_operativo'
+  if (canale === 'operativo') {
+    return GATEWAY_URL + '/wa/pending?canale=whatsapp_operativo'
+  }
+  return GATEWAY_URL + '/wa/pending'
 }
 
 async function fetchPending(canale) {
@@ -177,7 +185,7 @@ const DEMO_ATTIVA =
 const ADESSO = Date.now()
 const DEMO_ITEMS = [
   {
-    id: 'demo-1', demo: true, numero: '+39 000 0000001', contact_id: 'demo-1',
+    id: 'demo-1', demo: true, canale: 'whatsapp_operativo', numero: '+39 000 0000001', contact_id: 'demo-1',
     nome_cliente: 'Marco Bianchi',
     messaggio_ricevuto: 'Buongiorno, per il 730 cosa devo portare?',
     risposta_ai: 'Buongiorno, per il 730 servono CU, documento d’identità e le spese detraibili. Ti aspetto giovedì alle 15:30.',
@@ -185,7 +193,7 @@ const DEMO_ITEMS = [
     created_at: new Date(ADESSO - 4 * 60000).toISOString(),
   },
   {
-    id: 'demo-2', demo: true, numero: '+39 000 0000002', contact_id: 'demo-2',
+    id: 'demo-2', demo: true, canale: 'whatsapp_inbound', numero: '+39 000 0000002', contact_id: 'demo-2',
     nome_cliente: 'Giulia Fontana',
     messaggio_ricevuto: 'Ciao, ho una domanda sul bonus nido, posso passare domani?',
     risposta_ai: 'Ciao, ricevo su appuntamento, trovi i posti liberi qui: https://appt.link/appuntamento-u-p-caf',
@@ -193,7 +201,7 @@ const DEMO_ITEMS = [
     created_at: new Date(ADESSO - 15 * 60000).toISOString(),
   },
   {
-    id: 'demo-3', demo: true, numero: '+39 000 0000003', contact_id: 'demo-3',
+    id: 'demo-3', demo: true, canale: 'whatsapp_operativo', numero: '+39 000 0000003', contact_id: 'demo-3',
     nome_cliente: 'Elena Tessari',
     messaggio_ricevuto: 'È arrivata la mia pensione? Mi avevano detto che dovevi controllare.',
     risposta_ai: '',
@@ -231,7 +239,8 @@ function etichettaAttesa(createdAt) {
 
 // ── Riga della lista chat (colonna sinistra) ──────────────────────────────
 
-function ChatRow({ item, canale, attiva, onPick }) {
+function ChatRow({ item, attiva, onPick }) {
+  const canale = canaleDi(item)
   const senzaBozza = !(item.risposta_ai || '').trim()
   const urgente = minutiDa(item.created_at) >= 10
   const identificativo = canale === 'ghl' ? item.contact_id : item.numero
@@ -240,6 +249,10 @@ function ChatRow({ item, canale, attiva, onPick }) {
   const rowClass =
     'flex w-full items-start gap-3 border-b border-slate-100 px-3 py-3 text-left transition ' +
     (attiva ? 'bg-green-50' : 'bg-white hover:bg-slate-50')
+
+  const chipCanale = canale === 'ghl'
+    ? 'rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-800'
+    : 'rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700'
 
   return (
     <button type="button" onClick={onPick} className={rowClass}>
@@ -254,7 +267,7 @@ function ChatRow({ item, canale, attiva, onPick }) {
           </span>
         </span>
         <span className="truncate text-xs text-slate-500">{item.messaggio_ricevuto || '—'}</span>
-        <span className="mt-0.5">
+        <span className="mt-0.5 flex items-center gap-1.5">
           {senzaBozza ? (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
               Da scrivere
@@ -264,6 +277,7 @@ function ChatRow({ item, canale, attiva, onPick }) {
               Bozza pronta
             </span>
           )}
+          <span className={chipCanale}>{canale === 'ghl' ? 'GHL' : 'OpenWA'}</span>
         </span>
       </span>
     </button>
@@ -272,7 +286,8 @@ function ChatRow({ item, canale, attiva, onPick }) {
 
 // ── Conversazione con bozza (colonna destra) ──────────────────────────────
 
-function ChatDetail({ item, canale, testo, onTesto, onSent, onRejected, onBack }) {
+function ChatDetail({ item, testo, onTesto, onSent, onRejected, onBack }) {
+  const canale = canaleDi(item)
   const bozzaOriginale = item.risposta_ai || ''
   const senzaBozza     = !bozzaOriginale.trim()
 
@@ -336,7 +351,7 @@ function ChatDetail({ item, canale, testo, onTesto, onSent, onRejected, onBack }
     }
   }
 
-  const badgeLabel = canale === 'ghl' ? 'GHL / META WA' : 'WA OPERATIVO'
+  const badgeLabel = canale === 'ghl' ? 'GHL' : 'OpenWA'
   const badgeClass = canale === 'ghl'
     ? 'rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800'
     : 'rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800'
@@ -482,11 +497,12 @@ function ChatDetail({ item, canale, testo, onTesto, onSent, onRejected, onBack }
  * WhatsAppPanel — inbox bozze in attesa di approvazione (grafica stile WhatsApp Web).
  *
  * Props:
- *   canale: "operativo" (default) | "ghl"
- *     "operativo" → Canale 3, whatsapp-web.js (OpenWA), badge verde "WA OPERATIVO"
- *     "ghl"       → Canale 2 GHL, GHL API, badge blu "GHL / META WA"
+ *   canale: "tutti" (default) | "operativo" | "ghl"
+ *     "tutti"     → un'unica lista con le chat di OpenWA e di GHL, con filtro
+ *     "operativo" → solo Canale 3 (OpenWA)
+ *     "ghl"       → solo Canale 2 (GHL)
  */
-export default function WhatsAppPanel({ canale = 'operativo' }) {
+export default function WhatsAppPanel({ canale = 'tutti' }) {
   const [items, setItems]       = useState([])
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState(null)
@@ -494,6 +510,7 @@ export default function WhatsAppPanel({ canale = 'operativo' }) {
   const [showQR, setShowQR]     = useState(false)
   const [selId, setSelId]       = useState(null)
   const [bozze, setBozze]       = useState({})
+  const [filtro, setFiltro]     = useState('tutti')
 
   const isCanale3 = canale !== 'ghl'
 
@@ -542,13 +559,15 @@ export default function WhatsAppPanel({ canale = 'operativo' }) {
   }
 
   const connesso = waStatus === 'pronto'
-  const titoloPannello = canale === 'ghl'
-    ? 'GHL / Meta WhatsApp' + (items.length > 0 ? ' (' + items.length + ')' : '')
-    : 'WhatsApp Operativo'  + (items.length > 0 ? ' (' + items.length + ')' : '')
+  const titoloPannello = 'WhatsApp' + (items.length > 0 ? ' (' + items.length + ')' : '')
+
+  const nOperativo = items.filter((i) => canaleDi(i) === 'operativo').length
+  const nGhl       = items.length - nOperativo
+  const visibili   = filtro === 'tutti' ? items : items.filter((i) => canaleDi(i) === filtro)
 
   // Su schermo largo apre da solo la prima chat; su telefono resta la lista.
   const largo = typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
-  const selezionato = items.find((i) => i.id === selId) || (largo ? items[0] || null : null)
+  const selezionato = visibili.find((i) => i.id === selId) || (largo ? visibili[0] || null : null)
 
   function testoDi(item) {
     return bozze[item.id] !== undefined ? bozze[item.id] : (item.risposta_ai || '')
@@ -634,11 +653,36 @@ export default function WhatsAppPanel({ canale = 'operativo' }) {
 
             {/* Colonna sinistra: chat in attesa */}
             <div className={(selezionato ? 'hidden md:block' : 'block') + ' min-h-0 overflow-y-auto border-slate-200 md:border-r'}>
-              {items.map((item) => (
+              {canale === 'tutti' && (
+                <div className="sticky top-0 z-10 flex gap-1.5 border-b border-slate-100 bg-white px-3 py-2">
+                  {[
+                    { key: 'tutti',     label: 'Tutti',   n: items.length },
+                    { key: 'operativo', label: 'OpenWA',  n: nOperativo },
+                    { key: 'ghl',       label: 'GHL',     n: nGhl },
+                  ].map(({ key, label, n }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setFiltro(key)}
+                      className={
+                        'rounded-full border px-3 py-1 text-xs font-semibold transition ' +
+                        (filtro === key
+                          ? 'border-green-600 bg-green-600 text-white'
+                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50')
+                      }
+                    >
+                      {label + ' ' + n}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {visibili.length === 0 && (
+                <p className="px-3 py-6 text-center text-xs text-slate-400">Nessuna chat in questo filtro</p>
+              )}
+              {visibili.map((item) => (
                 <ChatRow
                   key={item.id}
                   item={item}
-                  canale={canale}
                   attiva={selezionato ? item.id === selezionato.id : false}
                   onPick={() => setSelId(item.id)}
                 />
@@ -651,7 +695,6 @@ export default function WhatsAppPanel({ canale = 'operativo' }) {
                 <ChatDetail
                   key={selezionato.id}
                   item={selezionato}
-                  canale={canale}
                   testo={testoDi(selezionato)}
                   onTesto={(t) => setBozze((prev) => ({ ...prev, [selezionato.id]: t }))}
                   onSent={rimuovi}

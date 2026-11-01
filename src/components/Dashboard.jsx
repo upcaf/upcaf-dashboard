@@ -1,4 +1,5 @@
 // src/components/Dashboard.jsx
+// v3.5 — 1 novembre 2026: una sola pagina WhatsApp (OpenWA + GHL), tolta la scheda GHL e "Conversazioni".
 // v3.4 — 25 agosto 2026
 //
 // Unica modifica rispetto alla v3.3:
@@ -25,21 +26,19 @@ import { btnSecondary } from './ui'
 
 const NAV = [
   { id: 'operativo',  label: 'Operativo',        icon: 'ti-layout-dashboard' },
-  { id: 'whatsapp',   label: 'WA Operativo',     icon: 'ti-brand-whatsapp'   },
-  { id: 'ghl',        label: 'GHL',              icon: 'ti-address-book'     },
+  { id: 'whatsapp',   label: 'WhatsApp',         icon: 'ti-brand-whatsapp'   },
   { id: 'marketing',  label: 'Marketing',        icon: 'ti-speakerphone'     },
   { id: 'normative',  label: 'Normative',        icon: 'ti-news'             },
   { id: 'kb',         label: 'Consulente AI KB', icon: 'ti-database-search'  },
   { id: 'sistema',    label: 'Sistema',          icon: 'ti-activity'         },
 ]
 
-const MOBILE_PRIMARY   = ['whatsapp', 'operativo', 'ghl']
+const MOBILE_PRIMARY   = ['whatsapp', 'operativo']
 const MOBILE_SECONDARY = ['marketing', 'normative', 'kb', 'sistema']
 
 const SUBTITLES = {
   operativo: 'Panoramica cross-canale',
-  whatsapp:  'Numero operativo — Canale 3',
-  ghl:       'WhatsApp Meta via GoHighLevel',
+  whatsapp:  'OpenWA e GoHighLevel in un\'unica lista',
   marketing: 'Copy e campagne',
   normative: 'Aggiornamenti normativi',
   kb:        'Consulta la knowledge base',
@@ -164,12 +163,8 @@ export default function Dashboard({ onLogout }) {
     if (id === 'operativo' && totalAlerts > 0)
       return { n: totalAlerts, cls: 'bg-uc-amber' }
     if (id === 'whatsapp') {
-      const n = waPendingC3 + handoffC3
+      const n = waPendingC3 + waPendingGhl + handoffC3 + handoffGhl + daApprovareCount
       return n > 0 ? { n, cls: 'bg-green-500' } : null
-    }
-    if (id === 'ghl') {
-      const n = waPendingGhl + daApprovareCount + handoffGhl
-      return n > 0 ? { n, cls: 'bg-uc-blue' } : null
     }
     if (id === 'normative' && normativeCount > 0)
       return { n: normativeCount, cls: 'bg-uc-blue' }
@@ -298,7 +293,6 @@ export default function Dashboard({ onLogout }) {
         >
           {active === 'operativo'  && <ViewOperativo stats={stats} />}
           {active === 'whatsapp'   && <ViewWhatsApp />}
-          {active === 'ghl'        && <ViewGHL />}
           {active === 'marketing'  && <MarketingPanel />}
           {active === 'normative'  && <NormativePanel />}
           {active === 'kb'         && <ViewKB />}
@@ -409,20 +403,9 @@ function ViewWhatsApp() {
   return (
     <div className="flex flex-col gap-3 p-3 pb-5 sm:p-4 sm:px-5">
       <WhatsAppPanel />
-      <HandoffsPanel canale="whatsapp_operativo" title="Handoff aperti — Canale 3" />
-      <SessionsPanel canale="whatsapp_operativo" title="Conversazioni Canale 3" />
+      <ApprovalsPanel />
+      <HandoffsPanel title="Handoff aperti — OpenWA e GHL" />
       <CorrectionsPanel />
-    </div>
-  )
-}
-
-function ViewGHL() {
-  return (
-    <div className="flex flex-col gap-3 p-3 pb-5 sm:p-4 sm:px-5">
-      <WhatsAppPanel canale="ghl" />
-      <ApprovalsPanel canale="whatsapp_inbound" />
-      <HandoffsPanel canale="whatsapp_inbound" title="Handoff aperti — GHL" />
-      <SessionsPanel canale="whatsapp_inbound" title="Conversazioni GHL" />
     </div>
   )
 }
