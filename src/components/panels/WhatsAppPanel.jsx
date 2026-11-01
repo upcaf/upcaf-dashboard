@@ -4,7 +4,8 @@
 //
 // v2.0 — Nuova grafica stile WhatsApp Web: lista chat a sinistra, conversazione
 //   con bozza tratteggiata a destra (su telefono: lista, poi conversazione).
-//   Stessa logica e stessi endpoint di v1.4: cambia solo come viene disegnato.
+//   Stessi endpoint di v1.4. Tolta la scelta del motivo di correzione: il gateway
+//   salva già bozza AI e testo inviato (stato modificato_e_inviato), il motivo si ricava dopo.
 //
 // v1.4 — Gestione contatti LID:
 //   Quando il gateway risponde 422 con { lid: true }, l'errore rosso generico
@@ -34,17 +35,6 @@ const GATEWAY_URL = 'https://gateway-production-4696.up.railway.app'
 
 // URL base GHL per link conversazione — apre direttamente la chat del contatto
 const GHL_CONVERSATION_URL = 'https://app.gohighlevel.com/v2/location/otZi0Yae4nEnmUzTXzOD/conversations/'
-
-const MOTIVO_OBBLIGATORIO = true
-
-const MOTIVI = [
-  { key: 'dato_sbagliato',       label: 'Dato sbagliato',       hint: 'Il numero era errato' },
-  { key: 'dato_superato',        label: 'Dato superato',        hint: 'La KB era vecchia' },
-  { key: 'mancava_info',         label: 'Mancava info',         hint: 'Risposta incompleta' },
-  { key: 'promessa_impossibile', label: 'Promessa impossibile', hint: 'Il sistema non può onorarla' },
-  { key: 'troppo_lungo',         label: 'Troppo lungo',         hint: 'Stile WhatsApp' },
-  { key: 'tono',                 label: 'Tono',                 hint: 'Forma, non contenuto' },
-]
 
 // ── Funzioni API parametriche ─────────────────────────────────────────────
 
@@ -291,7 +281,6 @@ function ChatDetail({ item, testo, onTesto, onSent, onRejected, onBack }) {
   const bozzaOriginale = item.risposta_ai || ''
   const senzaBozza     = !bozzaOriginale.trim()
 
-  const [motivo, setMotivo]   = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState(null)
   const [isLid, setIsLid]     = useState(false)
@@ -302,14 +291,12 @@ function ChatDetail({ item, testo, onTesto, onSent, onRejected, onBack }) {
     [testo, bozzaOriginale, senzaBozza]
   )
 
-  const serveMotivo       = MOTIVO_OBBLIGATORIO && modificato
-  const bloccatoDalMotivo = serveMotivo && !motivo
   const parole            = contaParole(testo)
   const identificativo    = canale === 'ghl' ? item.contact_id : item.numero
   const nome              = item.nome_cliente || identificativo || 'nome non noto'
 
   async function handleSend() {
-    if (!testo.trim() || bloccatoDalMotivo) return
+    if (!testo.trim()) return
     if (item.demo) { onSent(item.id); return }
     setLoading(true)
     setError(null)
@@ -321,7 +308,7 @@ function ChatDetail({ item, testo, onTesto, onSent, onRejected, onBack }) {
         pending_id:        item.id,
         item,
         testo_finale:      testo.trim(),
-        motivo_correzione: modificato ? motivo : null,
+        motivo_correzione: null,
       })
       onSent(item.id)
     } catch (err) {
@@ -428,34 +415,9 @@ function ChatDetail({ item, testo, onTesto, onSent, onRejected, onBack }) {
         />
 
         {modificato && (
-          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5">
-            <div className="mb-2 text-xs text-blue-900">
-              Hai corretto la bozza. <span className="font-semibold">Perché?</span>
-              {MOTIVO_OBBLIGATORIO && <span className="text-blue-700"> (obbligatorio)</span>}
-            </div>
-            <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap">
-              {MOTIVI.map(({ key, label, hint }) => {
-                const attivo = motivo === key
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    title={hint}
-                    disabled={loading}
-                    onClick={() => setMotivo(attivo ? null : key)}
-                    className={
-                      'rounded-lg border px-2.5 py-2 text-xs font-medium transition disabled:opacity-50 ' +
-                      (attivo
-                        ? 'border-blue-600 bg-blue-600 text-white'
-                        : 'border-blue-200 bg-white text-blue-800 hover:bg-blue-100')
-                    }
-                  >
-                    {label}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+          <p className="text-xs text-slate-500">
+            Hai corretto la bozza: salvo la tua versione e il motivo lo ricavo io.
+          </p>
         )}
 
         {error && !isLid && (
@@ -475,15 +437,10 @@ function ChatDetail({ item, testo, onTesto, onSent, onRejected, onBack }) {
           <button
             type="button"
             onClick={handleSend}
-            disabled={loading || !testo.trim() || bloccatoDalMotivo}
-            title={bloccatoDalMotivo ? 'Scegli prima il motivo della correzione' : undefined}
+            disabled={loading || !testo.trim()}
             className="flex-1 rounded-xl bg-green-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading
-              ? 'Invio in corso...'
-              : bloccatoDalMotivo
-                ? 'Scegli il motivo per inviare'
-                : inviaLabel}
+            {loading ? 'Invio in corso...' : inviaLabel}
           </button>
         </div>
       </div>
