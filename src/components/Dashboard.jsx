@@ -1,5 +1,5 @@
 // src/components/Dashboard.jsx
-// v3.5 — 1 novembre 2026: una sola pagina WhatsApp (OpenWA + GHL), tolta la scheda GHL e "Conversazioni".
+// v3.5 — 1 novembre 2026: una sola pagina WhatsApp (OpenWA + GHL); tolti scheda GHL, "Conversazioni", "Risposte da approvare" e "Correzioni" da questa pagina (restano gli handoff, che bloccano le bozze finché non vengono chiusi).
 // v3.4 — 25 agosto 2026
 //
 // Unica modifica rispetto alla v3.3:
@@ -21,7 +21,6 @@ import SystemStatus from './panels/SystemStatus'
 import AccuracyPanel from './panels/AccuracyPanel'
 import ApprovalsPanel from './panels/ApprovalsPanel'
 import WhatsAppPanel from './panels/WhatsAppPanel'
-import CorrectionsPanel from './panels/CorrectionsPanel'
 import { btnSecondary } from './ui'
 
 const NAV = [
@@ -403,9 +402,7 @@ function ViewWhatsApp() {
   return (
     <div className="flex flex-col gap-3 p-3 pb-5 sm:p-4 sm:px-5">
       <WhatsAppPanel />
-      <ApprovalsPanel />
       <HandoffsPanel title="Handoff aperti — OpenWA e GHL" />
-      <CorrectionsPanel />
     </div>
   )
 }
