@@ -1,5 +1,5 @@
 // src/components/Dashboard.jsx
-// v3.5 — 1 novembre 2026: una sola pagina WhatsApp (OpenWA + GHL); tolti scheda GHL, "Conversazioni", "Risposte da approvare", "Correzioni" e "Accuratezza normativa"; Operativo = riepilogo + handoff (restano gli handoff, che bloccano le bozze finché non vengono chiusi).
+// v3.5 — 1 novembre 2026: una sola pagina WhatsApp (OpenWA + GHL); tolti scheda GHL, "Conversazioni", "Risposte da approvare", "Correzioni" e "Accuratezza normativa"; Operativo = solo riepilogo (gli handoff si gestiscono nella pagina WhatsApp) (restano gli handoff, che bloccano le bozze finché non vengono chiusi).
 // v3.4 — 25 agosto 2026
 //
 // Unica modifica rispetto alla v3.3:
@@ -393,7 +393,6 @@ function ViewOperativo({ stats }) {
   return (
     <div className="flex flex-col gap-3 p-3 pb-5 sm:p-4 sm:px-5">
       <HeaderStats stats={stats} />
-      <HandoffsPanel title="Handoff aperti — OpenWA e GHL" />
     </div>
   )
 }
