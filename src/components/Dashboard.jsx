@@ -1,5 +1,5 @@
 // src/components/Dashboard.jsx
-// v3.5 — 1 novembre 2026: una sola pagina WhatsApp (OpenWA + GHL); tolti scheda GHL, "Conversazioni", "Risposte da approvare" e "Correzioni" da questa pagina (restano gli handoff, che bloccano le bozze finché non vengono chiusi).
+// v3.5 — 1 novembre 2026: una sola pagina WhatsApp (OpenWA + GHL); tolti scheda GHL, "Conversazioni", "Risposte da approvare", "Correzioni" e "Accuratezza normativa"; Operativo = riepilogo + handoff (restano gli handoff, che bloccano le bozze finché non vengono chiusi).
 // v3.4 — 25 agosto 2026
 //
 // Unica modifica rispetto alla v3.3:
@@ -12,14 +12,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { endOfTodayISO, startOfTodayISO, supabase } from '../lib/supabase'
 import HandoffsPanel from './panels/HandoffsPanel'
-import SessionsPanel from './panels/SessionsPanel'
 import KbQueryPanel from './panels/KbQueryPanel'
 import MarketingPanel from './panels/MarketingPanel'
 import NormativePanel from './panels/NormativePanel'
 import ErrorLogsPanel from './panels/ErrorLogsPanel'
 import SystemStatus from './panels/SystemStatus'
-import AccuracyPanel from './panels/AccuracyPanel'
-import ApprovalsPanel from './panels/ApprovalsPanel'
 import WhatsAppPanel from './panels/WhatsAppPanel'
 import { btnSecondary } from './ui'
 
@@ -68,6 +65,7 @@ function useDashboardStats() {
         waPendingC3Res,
         waPendingGhlRes,
         bozzeInviateRes,
+        bozzeInvariateRes,
       ] = await Promise.all([
         conta('session_logs').gte('created_at', start).lte('created_at', end),
         conta('session_logs')
@@ -92,7 +90,12 @@ function useDashboardStats() {
         conta('whatsapp_pending')
           .eq('stato', 'in_attesa')
           .eq('canale', 'whatsapp_inbound'),
-        // Bozze accettate invariate oggi (proxy accuratezza AI su C3 + GHL)
+        // Bozze inviate oggi (invariate + corrette da te), C3 + GHL
+        conta('whatsapp_pending')
+          .in('stato', ['inviato', 'modificato_e_inviato'])
+          .gte('updated_at', start)
+          .lte('updated_at', end),
+        // Di queste, quelle inviate senza modifiche
         conta('whatsapp_pending')
           .eq('stato', 'inviato')
           .gte('updated_at', start)
@@ -109,6 +112,7 @@ function useDashboardStats() {
       const waPendingC3       = waPendingC3Res.count      ?? 0
       const waPendingGhl      = waPendingGhlRes.count     ?? 0
       const bozzeInviateOggi  = bozzeInviateRes.count     ?? 0
+      const bozzeInvariateOggi = bozzeInvariateRes.count  ?? 0
       const decise            = risolti + handoffOggi
       const qgApprovati       = decise > 0 ? Math.round((risolti / decise) * 100) : null
 
@@ -126,6 +130,7 @@ function useDashboardStats() {
         waPendingGhl,
         waPending:       waPendingC3 + waPendingGhl,
         bozzeInviateOggi,
+        bozzeInvariateOggi,
       })
     } catch {
       /* mantieni i valori precedenti */
@@ -388,12 +393,7 @@ function ViewOperativo({ stats }) {
   return (
     <div className="flex flex-col gap-3 p-3 pb-5 sm:p-4 sm:px-5">
       <HeaderStats stats={stats} />
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <ApprovalsPanel />
-        <HandoffsPanel title="Handoff aperti — tutti i canali" />
-      </div>
-      <SessionsPanel title="Conversazioni recenti — tutti i canali" />
-      <AccuracyPanel />
+      <HandoffsPanel title="Handoff aperti — OpenWA e GHL" />
     </div>
   )
 }
@@ -431,24 +431,8 @@ function HeaderStats({ stats }) {
   const bozzeTot         = bozzeC3 + bozzeGhl
   const handoff          = stats.handoffAperti     ?? 0
   const normative        = stats.novitaNormative   ?? 0
-  const qg               = stats.qgApprovati
   const bozzeInviate     = stats.bozzeInviateOggi  ?? 0
-
-  const subAI = (() => {
-    const parti = []
-    if (qg != null) {
-      parti.push((stats.risoltiOggi ?? 0) + ' risolte · ' + (stats.handoffOggi ?? 0) + ' handoff')
-    }
-    if (bozzeInviate > 0) {
-      parti.push(bozzeInviate + ' bozze accettate oggi')
-    }
-    if (parti.length === 0) {
-      return 'nessuna conversazione conclusa oggi'
-    }
-    return parti.join(' · ')
-  })()
-
-  const valAI = qg != null ? qg + '%' : (bozzeInviate > 0 ? bozzeInviate : '—')
+  const bozzeInvariate   = stats.bozzeInvariateOggi ?? 0
 
   const items = [
     {
@@ -464,9 +448,9 @@ function HeaderStats({ stats }) {
       color: handoff > 0 ? 'text-uc-amber' : 'text-uc-ink',
     },
     {
-      val:   valAI,
-      label: "Risolte dall'AI",
-      sub:   subAI,
+      val:   bozzeInviate,
+      label: 'Bozze inviate oggi',
+      sub:   bozzeInvariate + ' senza modifiche · ' + (bozzeInviate - bozzeInvariate) + ' corrette',
       color: 'text-uc-green',
     },
     {
