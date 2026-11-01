@@ -1,4 +1,5 @@
 // src/components/Dashboard.jsx
+// v3.5 — 1 novembre 2026: una sola pagina WhatsApp (OpenWA + GHL); tolti scheda GHL, "Conversazioni", "Risposte da approvare", "Correzioni" e "Accuratezza normativa"; Operativo fuso in WhatsApp: riepilogo in cima alla pagina (restano gli handoff, che bloccano le bozze finché non vengono chiusi).
 // v3.4 — 25 agosto 2026
 //
 // Unica modifica rispetto alla v3.3:
@@ -11,35 +12,27 @@
 import { useCallback, useEffect, useState } from 'react'
 import { endOfTodayISO, startOfTodayISO, supabase } from '../lib/supabase'
 import HandoffsPanel from './panels/HandoffsPanel'
-import SessionsPanel from './panels/SessionsPanel'
 import KbQueryPanel from './panels/KbQueryPanel'
 import MarketingPanel from './panels/MarketingPanel'
 import NormativePanel from './panels/NormativePanel'
 import ErrorLogsPanel from './panels/ErrorLogsPanel'
 import SystemStatus from './panels/SystemStatus'
-import AccuracyPanel from './panels/AccuracyPanel'
-import ApprovalsPanel from './panels/ApprovalsPanel'
 import WhatsAppPanel from './panels/WhatsAppPanel'
-import CorrectionsPanel from './panels/CorrectionsPanel'
 import { btnSecondary } from './ui'
 
 const NAV = [
-  { id: 'operativo',  label: 'Operativo',        icon: 'ti-layout-dashboard' },
-  { id: 'whatsapp',   label: 'WA Operativo',     icon: 'ti-brand-whatsapp'   },
-  { id: 'ghl',        label: 'GHL',              icon: 'ti-address-book'     },
+  { id: 'whatsapp',   label: 'WhatsApp',         icon: 'ti-brand-whatsapp'   },
   { id: 'marketing',  label: 'Marketing',        icon: 'ti-speakerphone'     },
   { id: 'normative',  label: 'Normative',        icon: 'ti-news'             },
   { id: 'kb',         label: 'Consulente AI KB', icon: 'ti-database-search'  },
   { id: 'sistema',    label: 'Sistema',          icon: 'ti-activity'         },
 ]
 
-const MOBILE_PRIMARY   = ['whatsapp', 'operativo', 'ghl']
-const MOBILE_SECONDARY = ['marketing', 'normative', 'kb', 'sistema']
+const MOBILE_PRIMARY   = ['whatsapp', 'marketing']
+const MOBILE_SECONDARY = ['normative', 'kb', 'sistema']
 
 const SUBTITLES = {
-  operativo: 'Panoramica cross-canale',
-  whatsapp:  'Numero operativo — Canale 3',
-  ghl:       'WhatsApp Meta via GoHighLevel',
+  whatsapp:  'OpenWA e GoHighLevel in un\'unica lista',
   marketing: 'Copy e campagne',
   normative: 'Aggiornamenti normativi',
   kb:        'Consulta la knowledge base',
@@ -70,6 +63,7 @@ function useDashboardStats() {
         waPendingC3Res,
         waPendingGhlRes,
         bozzeInviateRes,
+        bozzeInvariateRes,
       ] = await Promise.all([
         conta('session_logs').gte('created_at', start).lte('created_at', end),
         conta('session_logs')
@@ -94,7 +88,12 @@ function useDashboardStats() {
         conta('whatsapp_pending')
           .eq('stato', 'in_attesa')
           .eq('canale', 'whatsapp_inbound'),
-        // Bozze accettate invariate oggi (proxy accuratezza AI su C3 + GHL)
+        // Bozze inviate oggi (invariate + corrette da te), C3 + GHL
+        conta('whatsapp_pending')
+          .in('stato', ['inviato', 'modificato_e_inviato'])
+          .gte('updated_at', start)
+          .lte('updated_at', end),
+        // Di queste, quelle inviate senza modifiche
         conta('whatsapp_pending')
           .eq('stato', 'inviato')
           .gte('updated_at', start)
@@ -111,6 +110,7 @@ function useDashboardStats() {
       const waPendingC3       = waPendingC3Res.count      ?? 0
       const waPendingGhl      = waPendingGhlRes.count     ?? 0
       const bozzeInviateOggi  = bozzeInviateRes.count     ?? 0
+      const bozzeInvariateOggi = bozzeInvariateRes.count  ?? 0
       const decise            = risolti + handoffOggi
       const qgApprovati       = decise > 0 ? Math.round((risolti / decise) * 100) : null
 
@@ -128,6 +128,7 @@ function useDashboardStats() {
         waPendingGhl,
         waPending:       waPendingC3 + waPendingGhl,
         bozzeInviateOggi,
+        bozzeInvariateOggi,
       })
     } catch {
       /* mantieni i valori precedenti */
@@ -161,15 +162,9 @@ export default function Dashboard({ onLogout }) {
   const totalAlerts      = handoffGhl + handoffC3 + daApprovareCount + waPendingC3 + waPendingGhl
 
   const badgeFor = (id) => {
-    if (id === 'operativo' && totalAlerts > 0)
-      return { n: totalAlerts, cls: 'bg-uc-amber' }
     if (id === 'whatsapp') {
-      const n = waPendingC3 + handoffC3
+      const n = waPendingC3 + waPendingGhl + handoffC3 + handoffGhl + daApprovareCount
       return n > 0 ? { n, cls: 'bg-green-500' } : null
-    }
-    if (id === 'ghl') {
-      const n = waPendingGhl + daApprovareCount + handoffGhl
-      return n > 0 ? { n, cls: 'bg-uc-blue' } : null
     }
     if (id === 'normative' && normativeCount > 0)
       return { n: normativeCount, cls: 'bg-uc-blue' }
@@ -296,9 +291,7 @@ export default function Dashboard({ onLogout }) {
           className="flex-1 overflow-y-auto pb-[72px] md:pb-0"
           aria-label={'Sezione ' + active}
         >
-          {active === 'operativo'  && <ViewOperativo stats={stats} />}
-          {active === 'whatsapp'   && <ViewWhatsApp />}
-          {active === 'ghl'        && <ViewGHL />}
+          {active === 'whatsapp'   && <ViewWhatsApp stats={stats} />}
           {active === 'marketing'  && <MarketingPanel />}
           {active === 'normative'  && <NormativePanel />}
           {active === 'kb'         && <ViewKB />}
@@ -391,38 +384,12 @@ export default function Dashboard({ onLogout }) {
 
 // ─── VIEWS ───────────────────────────────────────────────────────────────────
 
-function ViewOperativo({ stats }) {
+function ViewWhatsApp({ stats }) {
   return (
     <div className="flex flex-col gap-3 p-3 pb-5 sm:p-4 sm:px-5">
       <HeaderStats stats={stats} />
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <ApprovalsPanel />
-        <HandoffsPanel title="Handoff aperti — tutti i canali" />
-      </div>
-      <SessionsPanel title="Conversazioni recenti — tutti i canali" />
-      <AccuracyPanel />
-    </div>
-  )
-}
-
-function ViewWhatsApp() {
-  return (
-    <div className="flex flex-col gap-3 p-3 pb-5 sm:p-4 sm:px-5">
       <WhatsAppPanel />
-      <HandoffsPanel canale="whatsapp_operativo" title="Handoff aperti — Canale 3" />
-      <SessionsPanel canale="whatsapp_operativo" title="Conversazioni Canale 3" />
-      <CorrectionsPanel />
-    </div>
-  )
-}
-
-function ViewGHL() {
-  return (
-    <div className="flex flex-col gap-3 p-3 pb-5 sm:p-4 sm:px-5">
-      <WhatsAppPanel canale="ghl" />
-      <ApprovalsPanel canale="whatsapp_inbound" />
-      <HandoffsPanel canale="whatsapp_inbound" title="Handoff aperti — GHL" />
-      <SessionsPanel canale="whatsapp_inbound" title="Conversazioni GHL" />
+      <HandoffsPanel title="Handoff aperti — OpenWA e GHL" />
     </div>
   )
 }
@@ -450,25 +417,8 @@ function HeaderStats({ stats }) {
   const bozzeGhl         = stats.waPendingGhl      ?? 0
   const bozzeTot         = bozzeC3 + bozzeGhl
   const handoff          = stats.handoffAperti     ?? 0
-  const normative        = stats.novitaNormative   ?? 0
-  const qg               = stats.qgApprovati
   const bozzeInviate     = stats.bozzeInviateOggi  ?? 0
-
-  const subAI = (() => {
-    const parti = []
-    if (qg != null) {
-      parti.push((stats.risoltiOggi ?? 0) + ' risolte · ' + (stats.handoffOggi ?? 0) + ' handoff')
-    }
-    if (bozzeInviate > 0) {
-      parti.push(bozzeInviate + ' bozze accettate oggi')
-    }
-    if (parti.length === 0) {
-      return 'nessuna conversazione conclusa oggi'
-    }
-    return parti.join(' · ')
-  })()
-
-  const valAI = qg != null ? qg + '%' : (bozzeInviate > 0 ? bozzeInviate : '—')
+  const bozzeInvariate   = stats.bozzeInvariateOggi ?? 0
 
   const items = [
     {
@@ -484,21 +434,15 @@ function HeaderStats({ stats }) {
       color: handoff > 0 ? 'text-uc-amber' : 'text-uc-ink',
     },
     {
-      val:   valAI,
-      label: "Risolte dall'AI",
-      sub:   subAI,
+      val:   bozzeInviate,
+      label: 'Bozze inviate oggi',
+      sub:   bozzeInvariate + ' senza modifiche · ' + (bozzeInviate - bozzeInvariate) + ' corrette',
       color: 'text-uc-green',
-    },
-    {
-      val:   normative,
-      label: 'Novità normative',
-      sub:   'Non ancora lette',
-      color: normative > 0 ? 'text-uc-blue' : 'text-uc-ink',
     },
   ]
 
   return (
-    <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4" role="region" aria-label="Riepilogo">
+    <div className="grid grid-cols-3 gap-2 sm:gap-3" role="region" aria-label="Riepilogo">
       {items.map(({ val, label, sub, color }) => (
         <div key={label} className="rounded-xl border border-uc-border bg-white p-3 sm:p-4">
           <div className={'text-[22px] sm:text-[26px] font-normal tracking-tight ' + color}>{val}</div>
