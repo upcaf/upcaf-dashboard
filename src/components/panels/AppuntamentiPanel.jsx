@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Card, EmptyState, ErrorBanner, LoadingState } from '../ui'
 
 const GATEWAY_URL = 'https://gateway-production-4696.up.railway.app'
+const GHL_CONTATTO_URL = 'https://app.gohighlevel.com/v2/location/otZi0Yae4nEnmUzTXzOD/contacts/detail/'
 
 function giornoChiave(iso) {
   return new Date(iso).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -56,6 +57,35 @@ function dividiTitolo(titolo) {
   return { servizio: titolo.slice(0, i).trim(), cliente: titolo.slice(i + 4).trim() }
 }
 
+// Esito del match con i contatti GHL (telefono → email → nome)
+function ChipGhl({ ghl }) {
+  if (ghl === undefined) return null
+  if (!ghl) {
+    return (
+      <span className="w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
+        Nessun contatto in GHL
+      </span>
+    )
+  }
+  if (ghl.candidati) {
+    return (
+      <span className="w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
+        {ghl.candidati.length + ' contatti con questo nome: da scegliere'}
+      </span>
+    )
+  }
+  return (
+    <a
+      href={GHL_CONTATTO_URL + ghl.contact_id}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="w-fit rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-800 hover:bg-blue-200"
+    >
+      {'GHL ✓ ' + ghl.nome + ' · via ' + ghl.match + (ghl.affidabilita === 'media' ? ' (da verificare)' : '')}
+    </a>
+  )
+}
+
 function Evento({ ev }) {
   const [aperto, setAperto] = useState(false)
   const { servizio, cliente } = dividiTitolo(ev.titolo)
@@ -76,6 +106,7 @@ function Evento({ ev }) {
               {servizio}
             </span>
           )}
+          <ChipGhl ghl={ev.ghl} />
           <span className="flex flex-wrap items-center gap-x-3 text-xs text-slate-500">
             {tel && <a href={'tel:' + tel.replace(/\s/g, '')} className="font-medium text-slate-700 hover:underline">{tel}</a>}
             {ev.luogo && <span className="truncate">{ev.luogo}</span>}
