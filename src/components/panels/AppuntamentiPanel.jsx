@@ -1,140 +1,26 @@
 // src/components/panels/AppuntamentiPanel.jsx
-// Appuntamenti dal Google Calendar di UP CAF (sola lettura, via gateway /appuntamenti).
-// Versione 1.2 — 1 novembre 2026
-//   v1.2: vista a giorni/settimana stile Google Calendar (griglia oraria); clic su un
-//         appuntamento apre la scheda sotto la griglia.
-// Versione 1.1 — 1 novembre 2026
-//   - da oggi in poi (passati nascosti, bottone "Passati N")
-//   - descrizione ripulita dall'HTML e dai link annulla/sposta, aperta con "Dettagli"
-//   - servizio e cliente separati dal titolo "SERVIZIO -- Cliente", telefono in evidenza
-// Prossimo passo: nota vocale + riassunto per appuntamento.
+// Appuntamenti dal Google Calendar di UP CAF (lettura via gateway /appuntamenti).
+// Versione 2.0 — 2 novembre 2026
+//   - griglia oraria stile Google Calendar (giorno/settimana), colori per servizio
+//   - clic su un appuntamento → scheda con match GHL e REC
+//   - REC: trascrizione dal microfono del browser (niente audio salvato) →
+//     controllo del testo → 1 riassunto AI → nota su GHL + Supabase → Segretaria
 // Regola Vite 8: zero template literal nel JSX — solo concatenazioni.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Card, ErrorBanner, LoadingState } from '../ui'
 
 const GATEWAY_URL = 'https://gateway-production-4696.up.railway.app'
 const GHL_CONTATTO_URL = 'https://app.gohighlevel.com/v2/location/otZi0Yae4nEnmUzTXzOD/contacts/detail/'
 
+// ── Utilità ───────────────────────────────────────────────────────────────
+
 function oraDi(iso) {
   return new Date(iso).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
 }
-
 function stessoGiorno(a, b) {
   return new Date(a).toDateString() === new Date(b).toDateString()
 }
-
-// Il calendario salva la descrizione come HTML: lo trasformo in testo semplice.
-function pulisciDescrizione(html) {
-  let t = (html || '')
-    .replace(/<\/p>|<br\s*\/?>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-  // via i link di appuntamento (annulla/sposta) e le righe di separazione
-  t = t
-    .split('\n')
-    .filter((r) => !/^\s*-{5,}\s*$/.test(r))
-    .join('\n')
-    .replace(/(Cancel|Reschedule)\s*\n?\s*https?:\/\/\S+/gi, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-  return t
-}
-
-function telefonoDi(testo) {
-  const m = testo.match(/NUMERO DI TELEFONO\s*\n?\s*(\+?[\d ]{8,})/i)
-  return m ? m[1].trim() : null
-}
-
-// "DISOCCUPAZIONE - NASPI -- Mihaiela Rosca" → servizio + cliente
-function dividiTitolo(titolo) {
-  const i = titolo.indexOf(' -- ')
-  if (i === -1) return { servizio: null, cliente: titolo }
-  return { servizio: titolo.slice(0, i).trim(), cliente: titolo.slice(i + 4).trim() }
-}
-
-// Esito del match con i contatti GHL (telefono → email → nome)
-function ChipGhl({ ghl }) {
-  if (ghl === undefined) return null
-  if (!ghl) {
-    return (
-      <span className="w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
-        Nessun contatto in GHL
-      </span>
-    )
-  }
-  if (ghl.candidati) {
-    return (
-      <span className="w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">
-        {ghl.candidati.length + ' contatti con questo nome: da scegliere'}
-      </span>
-    )
-  }
-  return (
-    <a
-      href={GHL_CONTATTO_URL + ghl.contact_id}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="w-fit rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-800 hover:bg-blue-200"
-    >
-      {'GHL ✓ ' + ghl.nome + ' · via ' + ghl.match + (ghl.affidabilita === 'media' ? ' (da verificare)' : '')}
-    </a>
-  )
-}
-
-function Evento({ ev }) {
-  const [aperto, setAperto] = useState(false)
-  const { servizio, cliente } = dividiTitolo(ev.titolo)
-  const testo = pulisciDescrizione(ev.descrizione)
-  const tel = telefonoDi(testo)
-  const finito = new Date(ev.end).getTime() < Date.now()
-
-  return (
-    <div className={'rounded-xl border bg-white px-3 py-2.5 ' + (finito ? 'border-slate-100 opacity-60' : 'border-slate-200')}>
-      <div className="flex items-start gap-3">
-        <div className="w-24 shrink-0 text-sm font-semibold text-green-700">
-          {ev.giornata_intera ? 'Tutto il giorno' : oraDi(ev.start) + '–' + oraDi(ev.end)}
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="text-sm font-semibold text-slate-800">{cliente}</span>
-          {servizio && (
-            <span className="w-fit rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-800">
-              {servizio}
-            </span>
-          )}
-          <ChipGhl ghl={ev.ghl} />
-          <span className="flex flex-wrap items-center gap-x-3 text-xs text-slate-500">
-            {tel && <a href={'tel:' + tel.replace(/\s/g, '')} className="font-medium text-slate-700 hover:underline">{tel}</a>}
-            {ev.luogo && <span className="truncate">{ev.luogo}</span>}
-          </span>
-        </div>
-        {testo && (
-          <button
-            type="button"
-            onClick={() => setAperto(!aperto)}
-            className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
-          >
-            {aperto ? 'Chiudi' : 'Dettagli'}
-          </button>
-        )}
-      </div>
-      {aperto && testo && (
-        <p className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
-          {testo}
-        </p>
-      )}
-    </div>
-  )
-}
-
-// ── Griglia oraria ────────────────────────────────────────────────────────
-const ORA_INIZIO = 7
-const ORA_FINE = 21
-const PX_ORA = 52
-
 function inizioGiorno(d) {
   const x = new Date(d)
   x.setHours(0, 0, 0, 0)
@@ -149,6 +35,54 @@ function lunediDi(d) {
   const x = inizioGiorno(d)
   return aggiungiGiorni(x, -((x.getDay() + 6) % 7))
 }
+
+// Il calendario salva la descrizione come HTML: lo trasformo in testo semplice.
+function pulisciDescrizione(html) {
+  return (html || '')
+    .replace(/<\/p>|<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .split('\n')
+    .filter((r) => !/^\s*-{5,}\s*$/.test(r))
+    .join('\n')
+    .replace(/(Cancel|Reschedule)\s*\n?\s*https?:\/\/\S+/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function telefonoDi(testo) {
+  const m = testo.match(/NUMERO DI TELEFONO\s*\n?\s*(\+?[\d ]{8,})/i)
+  return m ? m[1].trim() : null
+}
+
+// "DISOCCUPAZIONE - NASPI -- Mihaiela Rosca" → servizio + cliente
+function dividiTitolo(titolo) {
+  const i = titolo.indexOf(' -- ')
+  if (i === -1) return { servizio: null, cliente: titolo }
+  return { servizio: titolo.slice(0, i).trim(), cliente: titolo.slice(i + 4).trim() }
+}
+
+// Colori per tipo di servizio, come nei colori del tuo Google Calendar.
+function coloreServizio(titolo) {
+  const t = (titolo || '').toUpperCase()
+  if (t.includes('PAUSA')) return 'bg-slate-200 border-slate-400 text-slate-600'
+  if (t.includes('DISOCCUPAZIONE')) return 'bg-purple-200 border-purple-500 text-purple-950'
+  if (t.includes('BONUS NIDO')) return 'bg-green-200 border-green-600 text-green-950'
+  if (t.includes('DIMISSIONI')) return 'bg-emerald-200 border-emerald-600 text-emerald-950'
+  if (t.includes('VERIFICA E CALCOLO') || t.includes('PENSION') || t.includes('DOMANDA DI'))
+    return 'bg-orange-300 border-orange-600 text-orange-950'
+  if (t.includes('MODELLO REDDITI') || t.includes('730')) return 'bg-amber-200 border-amber-600 text-amber-950'
+  if (t.includes('BONUS MAMME') || t.includes('ISEE')) return 'bg-indigo-200 border-indigo-500 text-indigo-950'
+  return 'bg-sky-200 border-sky-500 text-sky-950'
+}
+
+// ── Griglia oraria ────────────────────────────────────────────────────────
+const ORA_INIZIO = 7
+const ORA_FINE = 21
+const PX_ORA = 60
 
 // Affianca gli appuntamenti che si sovrappongono (come fa Google Calendar).
 function disponi(eventi) {
@@ -168,7 +102,7 @@ function disponi(eventi) {
   }
   for (const ev of eventi) {
     const s = new Date(ev.start).getTime()
-    const e = Math.max(new Date(ev.end).getTime(), s + 25 * 60000)
+    const e = Math.max(new Date(ev.end).getTime(), s + 15 * 60000)
     if (cluster.length && s >= fine) { chiudi(); fine = 0 }
     cluster.push({ ev, s, e })
     fine = Math.max(fine, e)
@@ -177,36 +111,42 @@ function disponi(eventi) {
   return out
 }
 
-function BloccoEvento({ it, selezionato, onSel }) {
+function BloccoEvento({ it, onSel }) {
   const { ev } = it
   const inizio = new Date(ev.start)
   const minuti = inizio.getHours() * 60 + inizio.getMinutes() - ORA_INIZIO * 60
   const top = Math.max(0, (minuti / 60) * PX_ORA)
-  const alt = Math.max(22, ((it.e - it.s) / 3600000) * PX_ORA - 2)
-  const { cliente } = dividiTitolo(ev.titolo)
+  const alt = Math.max(14, ((it.e - it.s) / 3600000) * PX_ORA - 1)
+  const corto = alt < 34
+  const { cliente, servizio } = dividiTitolo(ev.titolo)
   const finito = new Date(ev.end).getTime() < Date.now()
-  const bordo = ev.ghl === undefined ? 'border-green-600' : ev.ghl && !ev.ghl.candidati ? 'border-blue-600' : 'border-amber-500'
   const larg = 100 / it.corsie
 
   return (
     <button
       type="button"
       onClick={onSel}
-      style={{ top: top, height: alt, left: it.corsia * larg + '%', width: larg + '%' }}
+      style={{ top: top, height: alt, left: it.corsia * larg + '%', width: 'calc(' + larg + '% - 1px)' }}
       className={
-        'absolute overflow-hidden rounded-md border-l-4 px-1.5 py-0.5 text-left text-[11px] leading-tight shadow-sm transition ' +
-        bordo + ' ' +
-        (selezionato ? 'bg-green-200 ring-2 ring-green-600' : 'bg-green-100 hover:bg-green-200') +
-        (finito ? ' opacity-60' : '')
+        'absolute overflow-hidden rounded border-l-4 px-1 text-left text-[10px] leading-[13px] shadow-sm transition hover:brightness-95 ' +
+        coloreServizio(ev.titolo) + (finito ? ' opacity-60' : '')
       }
     >
-      <span className="block font-semibold text-slate-800">{oraDi(ev.start)}</span>
-      <span className="block truncate text-slate-700">{cliente}</span>
+      {ev.nota && <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-red-600" title="Registrato" />}
+      {corto ? (
+        <span className="block truncate font-medium">{servizio || cliente}{servizio ? ' – ' + cliente : ''}</span>
+      ) : (
+        <>
+          <span className="block truncate font-semibold">{servizio || cliente}</span>
+          {servizio && <span className="block truncate">{cliente}</span>}
+          <span className="block opacity-70">{oraDi(ev.start)}</span>
+        </>
+      )}
     </button>
   )
 }
 
-function Griglia({ giorni, lista, selUid, onSel }) {
+function Griglia({ giorni, lista, onSel }) {
   const ore = []
   for (let h = ORA_INIZIO; h < ORA_FINE; h++) ore.push(h)
   const altezza = (ORA_FINE - ORA_INIZIO) * PX_ORA
@@ -216,7 +156,6 @@ function Griglia({ giorni, lista, selUid, onSel }) {
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-      {/* intestazione giorni */}
       <div className="grid border-b border-slate-200" style={colonne}>
         <div />
         {giorni.map((g) => {
@@ -240,8 +179,7 @@ function Griglia({ giorni, lista, selUid, onSel }) {
         })}
       </div>
 
-      {/* corpo con scorrimento verticale */}
-      <div className="max-h-[68vh] overflow-y-auto">
+      <div className="max-h-[72vh] overflow-y-auto">
         <div className="grid" style={colonne}>
           <div className="relative" style={{ height: altezza }}>
             {ore.map((h) => (
@@ -264,7 +202,7 @@ function Griglia({ giorni, lista, selUid, onSel }) {
                   <div style={{ top: (minutiOra / 60) * PX_ORA }} className="absolute inset-x-0 z-10 border-t-2 border-red-500" />
                 )}
                 {disponi(eventi).map((it) => (
-                  <BloccoEvento key={it.ev.uid} it={it} selezionato={it.ev.uid === selUid} onSel={() => onSel(it.ev.uid)} />
+                  <BloccoEvento key={it.ev.uid} it={it} onSel={() => onSel(it.ev.uid)} />
                 ))}
               </div>
             )
@@ -275,6 +213,262 @@ function Griglia({ giorni, lista, selUid, onSel }) {
   )
 }
 
+// ── Chip contatto GHL ─────────────────────────────────────────────────────
+function ChipGhl({ ghl }) {
+  if (ghl === undefined) return null
+  if (!ghl) {
+    return (
+      <span className="w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+        Nessun contatto in GHL
+      </span>
+    )
+  }
+  if (ghl.candidati) {
+    return (
+      <span className="w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+        {ghl.candidati.length + ' contatti con questo nome: la nota resta solo qui'}
+      </span>
+    )
+  }
+  return (
+    <a
+      href={GHL_CONTATTO_URL + ghl.contact_id}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="w-fit rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-800 hover:bg-blue-200"
+    >
+      {'GHL ✓ ' + ghl.nome + ' · via ' + ghl.match + (ghl.affidabilita === 'media' ? ' (da verificare)' : '')}
+    </a>
+  )
+}
+
+// ── Registratore: microfono → testo → riassunto → nota ────────────────────
+const SR = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null
+
+function Registratore({ ev, onSalvato }) {
+  const [fase, setFase] = useState('pronto') // pronto | rec | revisione | salvataggio | fatto
+  const [testo, setTesto] = useState('')
+  const [parziale, setParziale] = useState('')
+  const [errore, setErrore] = useState(null)
+  const [esito, setEsito] = useState(null)
+  const recRef = useRef(null)
+  const attivoRef = useRef(false)
+
+  useEffect(() => () => {
+    attivoRef.current = false
+    if (recRef.current) recRef.current.stop()
+  }, [])
+
+  function avvia() {
+    if (!SR) {
+      setErrore('Questo browser non supporta la trascrizione vocale: usa Chrome.')
+      return
+    }
+    setErrore(null)
+    const rec = new SR()
+    rec.lang = 'it-IT'
+    rec.continuous = true
+    rec.interimResults = true
+    rec.onresult = (e) => {
+      let finale = ''
+      let interim = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i]
+        if (r.isFinal) finale += r[0].transcript + ' '
+        else interim += r[0].transcript
+      }
+      if (finale) setTesto((t) => (t + ' ' + finale).trim())
+      setParziale(interim)
+    }
+    rec.onerror = (e) => {
+      if (e.error === 'not-allowed') {
+        attivoRef.current = false
+        setErrore('Microfono bloccato: consenti l\'accesso dal lucchetto accanto all\'indirizzo.')
+        setFase('pronto')
+      }
+    }
+    // Chrome chiude la sessione dopo qualche secondo di silenzio: la riapro finché non premo Stop.
+    rec.onend = () => {
+      if (attivoRef.current) {
+        try { rec.start() } catch { /* già riavviato */ }
+      }
+    }
+    recRef.current = rec
+    attivoRef.current = true
+    rec.start()
+    setFase('rec')
+  }
+
+  function ferma() {
+    attivoRef.current = false
+    if (recRef.current) recRef.current.stop()
+    setParziale('')
+    setFase('revisione')
+  }
+
+  async function salva() {
+    setFase('salvataggio')
+    setErrore(null)
+    try {
+      const ghl = ev.ghl && !ev.ghl.candidati ? ev.ghl : null
+      const res = await fetch(GATEWAY_URL + '/appuntamenti/nota', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uid: ev.uid,
+          titolo: ev.titolo,
+          start: ev.start,
+          contact_id: ghl ? ghl.contact_id : null,
+          trascrizione: testo,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status)
+      setEsito(data)
+      setFase('fatto')
+      onSalvato()
+    } catch (err) {
+      setErrore('Salvataggio non riuscito: ' + err.message + '. Il testo è ancora qui sotto, riprova.')
+      setFase('revisione')
+    }
+  }
+
+  const btnBase = 'rounded-xl px-4 py-3 text-sm font-semibold transition disabled:opacity-50'
+
+  return (
+    <div className="flex flex-col gap-2.5 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+      {ev.nota && fase === 'pronto' && (
+        <div className="rounded-lg bg-green-50 px-3 py-2 text-xs text-green-900">
+          <p className="mb-1 font-semibold">Già registrato · {new Date(ev.nota.aggiornata).toLocaleString('it-IT')}</p>
+          <p className="whitespace-pre-wrap">{ev.nota.riassunto}</p>
+        </div>
+      )}
+
+      {fase === 'pronto' && (
+        <button type="button" onClick={avvia} className={btnBase + ' bg-red-600 text-white hover:bg-red-700'}>
+          {ev.nota ? '● Registra di nuovo' : '● REC — inizia la registrazione'}
+        </button>
+      )}
+
+      {fase === 'rec' && (
+        <>
+          <div className="flex items-center gap-2 text-sm font-semibold text-red-700">
+            <span className="h-3 w-3 animate-pulse rounded-full bg-red-600" />
+            Sto ascoltando…
+          </div>
+          <p className="max-h-48 min-h-16 overflow-y-auto whitespace-pre-wrap rounded-lg bg-white px-3 py-2 text-sm text-slate-800">
+            {testo}
+            <span className="text-slate-400">{' ' + parziale}</span>
+          </p>
+          <button type="button" onClick={ferma} className={btnBase + ' bg-slate-800 text-white hover:bg-slate-900'}>
+            ■ Stop
+          </button>
+        </>
+      )}
+
+      {(fase === 'revisione' || fase === 'salvataggio') && (
+        <>
+          <p className="text-xs text-slate-500">
+            Controlla il testo e correggi se serve. L'audio non viene salvato.
+          </p>
+          <textarea
+            value={testo}
+            onChange={(e) => setTesto(e.target.value)}
+            rows={8}
+            disabled={fase === 'salvataggio'}
+            className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-green-300"
+          />
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button type="button" onClick={avvia} disabled={fase === 'salvataggio'} className={btnBase + ' border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}>
+              ● Continua a registrare
+            </button>
+            <button
+              type="button"
+              onClick={salva}
+              disabled={fase === 'salvataggio' || testo.trim().length < 20}
+              className={btnBase + ' flex-1 bg-green-600 text-white hover:bg-green-700'}
+            >
+              {fase === 'salvataggio' ? 'Riassumo e salvo…' : 'Riassumi e salva nota'}
+            </button>
+          </div>
+        </>
+      )}
+
+      {fase === 'fatto' && esito && (
+        <div className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-900">
+          <p className="mb-1 font-semibold">
+            Nota salvata{esito.ghl_nota_salvata ? ' su GHL e su Supabase' : ' su Supabase (non su GHL)'}
+          </p>
+          <p className="whitespace-pre-wrap text-xs">{esito.riassunto}</p>
+        </div>
+      )}
+
+      {errore && <div className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{errore}</div>}
+    </div>
+  )
+}
+
+// ── Scheda appuntamento (finestra) ────────────────────────────────────────
+function SchedaEvento({ ev, onChiudi, onSalvato }) {
+  const [dettagli, setDettagli] = useState(false)
+  const { servizio, cliente } = dividiTitolo(ev.titolo)
+  const testo = pulisciDescrizione(ev.descrizione)
+  const tel = telefonoDi(testo)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" onClick={onChiudi}>
+      <div
+        className="flex max-h-[92vh] w-full max-w-xl flex-col gap-3 overflow-y-auto rounded-t-2xl bg-white p-4 shadow-xl sm:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className="text-base font-bold text-slate-800">{cliente}</span>
+            {servizio && (
+              <span className={'w-fit rounded-full border-l-4 px-2 py-0.5 text-[11px] font-semibold ' + coloreServizio(ev.titolo)}>
+                {servizio}
+              </span>
+            )}
+            <span className="text-xs text-slate-500">
+              {new Date(ev.start).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }) +
+                ' · ' + oraDi(ev.start) + '–' + oraDi(ev.end)}
+            </span>
+            <span className="flex flex-wrap items-center gap-x-3 text-xs text-slate-500">
+              {tel && <a href={'tel:' + tel.replace(/\s/g, '')} className="font-medium text-slate-700 hover:underline">{tel}</a>}
+              {ev.luogo && <span>{ev.luogo}</span>}
+            </span>
+            <ChipGhl ghl={ev.ghl} />
+          </div>
+          <button
+            type="button"
+            onClick={onChiudi}
+            aria-label="Chiudi"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xl text-slate-500 hover:bg-slate-100"
+          >
+            ×
+          </button>
+        </div>
+
+        <Registratore ev={ev} onSalvato={onSalvato} />
+
+        {testo && (
+          <div>
+            <button type="button" onClick={() => setDettagli(!dettagli)} className="text-xs text-slate-500 underline">
+              {dettagli ? 'Nascondi dettagli' : 'Dettagli prenotazione'}
+            </button>
+            {dettagli && (
+              <p className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
+                {testo}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Pannello principale ───────────────────────────────────────────────────
 export default function AppuntamentiPanel() {
   const [lista, setLista] = useState([])
   const [loading, setLoading] = useState(true)
@@ -300,9 +494,10 @@ export default function AppuntamentiPanel() {
 
   useEffect(() => {
     load()
-    const t = setInterval(load, 120000)
+    // niente aggiornamento automatico mentre una scheda è aperta: non deve toglierti la registrazione
+    const t = setInterval(() => { if (!selUid) load() }, 120000)
     return () => clearInterval(t)
-  }, [load])
+  }, [load, selUid])
 
   const giorni = vista === 'giorno'
     ? [ancora]
@@ -349,12 +544,18 @@ export default function AppuntamentiPanel() {
             <span className="text-sm font-semibold capitalize text-slate-800">{titolo}</span>
           </div>
 
-          <Griglia giorni={giorni} lista={lista} selUid={selUid} onSel={(u) => setSelUid(u === selUid ? null : u)} />
-
-          {selezionato ? <Evento key={selezionato.uid} ev={selezionato} /> : (
-            <p className="text-center text-xs text-slate-400">Tocca un appuntamento per vedere la scheda</p>
-          )}
+          <Griglia giorni={giorni} lista={lista} onSel={setSelUid} />
+          <p className="text-center text-xs text-slate-400">Tocca un appuntamento per aprire la scheda e registrare</p>
         </div>
+      )}
+
+      {selezionato && (
+        <SchedaEvento
+          key={selezionato.uid}
+          ev={selezionato}
+          onChiudi={() => setSelUid(null)}
+          onSalvato={load}
+        />
       )}
     </Card>
   )
