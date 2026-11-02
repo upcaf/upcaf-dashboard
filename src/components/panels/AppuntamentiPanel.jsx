@@ -246,7 +246,7 @@ function ChipGhl({ ghl }) {
 const SR = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null
 
 function Registratore({ ev, onSalvato }) {
-  const [fase, setFase] = useState('pronto') // pronto | rec | revisione | salvataggio | fatto
+  const [fase, setFase] = useState('pronto') // pronto | rec | pausa | revisione | salvataggio | fatto
   const [testo, setTesto] = useState('')
   const [parziale, setParziale] = useState('')
   const [errore, setErrore] = useState(null)
@@ -306,6 +306,14 @@ function Registratore({ ev, onSalvato }) {
     setFase('revisione')
   }
 
+  // Pausa: smette di ascoltare (clienti che entrano, telefonate) e tiene il testo già raccolto.
+  function pausa() {
+    attivoRef.current = false
+    if (recRef.current) recRef.current.stop()
+    setParziale('')
+    setFase('pausa')
+  }
+
   async function salva() {
     setFase('salvataggio')
     setErrore(null)
@@ -350,19 +358,37 @@ function Registratore({ ev, onSalvato }) {
         </button>
       )}
 
-      {fase === 'rec' && (
+      {(fase === 'rec' || fase === 'pausa') && (
         <>
-          <div className="flex items-center gap-2 text-sm font-semibold text-red-700">
-            <span className="h-3 w-3 animate-pulse rounded-full bg-red-600" />
-            Sto ascoltando…
-          </div>
+          {fase === 'rec' ? (
+            <div className="flex items-center gap-2 text-sm font-semibold text-red-700">
+              <span className="h-3 w-3 animate-pulse rounded-full bg-red-600" />
+              Sto ascoltando…
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-sm font-semibold text-amber-700">
+              <span className="h-3 w-3 rounded-full bg-amber-500" />
+              In pausa: non sto registrando
+            </div>
+          )}
           <p className="max-h-48 min-h-16 overflow-y-auto whitespace-pre-wrap rounded-lg bg-white px-3 py-2 text-sm text-slate-800">
             {testo}
             <span className="text-slate-400">{' ' + parziale}</span>
           </p>
-          <button type="button" onClick={ferma} className={btnBase + ' bg-slate-800 text-white hover:bg-slate-900'}>
-            ■ Stop
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            {fase === 'rec' ? (
+              <button type="button" onClick={pausa} className={btnBase + ' flex-1 bg-amber-500 text-white hover:bg-amber-600'}>
+                ❚❚ Pausa (entra qualcuno / telefonata)
+              </button>
+            ) : (
+              <button type="button" onClick={avvia} className={btnBase + ' flex-1 bg-red-600 text-white hover:bg-red-700'}>
+                ● Riprendi
+              </button>
+            )}
+            <button type="button" onClick={ferma} className={btnBase + ' bg-slate-800 text-white hover:bg-slate-900'}>
+              ■ Stop
+            </button>
+          </div>
         </>
       )}
 
