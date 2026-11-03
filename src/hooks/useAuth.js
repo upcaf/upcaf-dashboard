@@ -1,38 +1,32 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
+import { GATEWAY_LOGIN_URL, clearToken, getToken, setToken } from '../lib/gatewayAuth'
 
-const AUTH_KEY = 'upcaf_admin_auth'
-
+// La password non sta più nella dashboard (finiva nel codice pubblico): si controlla sul gateway.
 export function useAuth() {
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    () => sessionStorage.getItem(AUTH_KEY) === 'true',
-  )
+  const [isAuthenticated, setIsAuthenticated] = useState(() => !!getToken())
 
-  const login = useCallback((password) => {
-    const expected = import.meta.env.VITE_ADMIN_PASSWORD
-    if (!expected) {
-      return { ok: false, error: 'VITE_ADMIN_PASSWORD non configurata' }
-    }
-    if (password === expected) {
-      sessionStorage.setItem(AUTH_KEY, 'true')
+  const login = useCallback(async (password) => {
+    try {
+      const res = await fetch(GATEWAY_LOGIN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.token) {
+        return { ok: false, error: data.error || 'Accesso non riuscito (HTTP ' + res.status + ')' }
+      }
+      setToken(data.token)
       setIsAuthenticated(true)
       return { ok: true }
+    } catch {
+      return { ok: false, error: 'Gateway non raggiungibile' }
     }
-    return { ok: false, error: 'Password non valida' }
   }, [])
 
   const logout = useCallback(() => {
-    sessionStorage.removeItem(AUTH_KEY)
+    clearToken()
     setIsAuthenticated(false)
-  }, [])
-
-  useEffect(() => {
-    const onStorage = (e) => {
-      if (e.key === AUTH_KEY) {
-        setIsAuthenticated(e.newValue === 'true')
-      }
-    }
-    window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
   }, [])
 
   return { isAuthenticated, login, logout }
