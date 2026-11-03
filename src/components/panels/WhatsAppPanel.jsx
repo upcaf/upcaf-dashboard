@@ -30,6 +30,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Card, EmptyState, ErrorBanner, LoadingState, formatDateTime } from '../ui'
+import { getToken } from '../../lib/gatewayAuth'
 
 const GATEWAY_URL = 'https://gateway-production-4696.up.railway.app'
 
@@ -619,7 +620,7 @@ export default function WhatsAppPanel({ canale = 'tutti' }) {
             WhatsApp → Impostazioni → Dispositivi collegati → Collega un dispositivo
           </p>
           <img
-            src={GATEWAY_URL + '/wa/qr?t=' + Date.now()}
+            src={GATEWAY_URL + '/wa/qr?t=' + Date.now() + '&token=' + encodeURIComponent(getToken() || '')}
             alt="QR WhatsApp"
             className="rounded-lg border border-slate-200"
             style={{ width: 220, height: 220 }}

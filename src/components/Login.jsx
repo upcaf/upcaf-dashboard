@@ -5,12 +5,12 @@ export default function Login({ onLogin }) {
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
-    const result = onLogin(password)
+    const result = await onLogin(password)
     if (!result.ok) {
       setError(result.error)
     }
