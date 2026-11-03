@@ -3,8 +3,9 @@
 // e lo aggiunge a ogni chiamata verso Railway (senza toccare i singoli pannelli).
 const TOKEN_KEY = 'upcaf_gw_token'
 
-export const GATEWAY_LOGIN_URL =
-  (import.meta.env.VITE_GATEWAY_URL || 'https://gateway-production-4696.up.railway.app') + '/auth/login'
+// Stesso indirizzo usato dai pannelli WhatsApp/Appuntamenti (quello che funziona):
+// la variabile VITE_GATEWAY_URL su Vercel può puntare a un gateway vecchio.
+export const GATEWAY_LOGIN_URL = 'https://gateway-production-4696.up.railway.app/auth/login'
 
 export function getToken() {
   try {
