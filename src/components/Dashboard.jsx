@@ -12,7 +12,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { endOfTodayISO, startOfTodayISO, supabase } from '../lib/supabase'
 import AppuntamentiPanel from './panels/AppuntamentiPanel'
-import HandoffsPanel from './panels/HandoffsPanel'
 import KbQueryPanel from './panels/KbQueryPanel'
 import MarketingPanel from './panels/MarketingPanel'
 import NormativePanel from './panels/NormativePanel'
@@ -392,7 +391,6 @@ function ViewWhatsApp() {
     <div className="flex flex-col gap-3 p-3 pb-5 sm:p-4 sm:px-5">
       <HeaderStats />
       <WhatsAppPanel />
-      <HandoffsPanel title="Handoff aperti — OpenWA e GHL" />
     </div>
   )
 }
